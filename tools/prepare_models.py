@@ -1,15 +1,14 @@
 """Download pinned MIT model sources/weights and convert them locally to ONNX.
 
 Explicit setup command; the application never downloads models automatically.
-Requires torch (CPU suffices), onnx, OpenCV, and onnxruntime in this interpreter.
+Conversion requires torch (CPU suffices), onnx, OpenCV, and onnxruntime.
+Use --download-only to fetch upstream files with just the Python standard library.
 """
 import argparse
 import hashlib
 import json
 from pathlib import Path
 from urllib.request import urlopen
-
-from convert_models import export
 
 SOURCES = {
     "UDnet": {"repo": "alzayats/UDnet", "sha": "d6b196bfef05b91eca0a05925686276a85af5f6c",
@@ -39,10 +38,12 @@ def download(url, path, checksum=None):
     path.write_bytes(data)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models-dir", type=Path, default=Path("models"))
-    args = parser.parse_args()
+    parser.add_argument("--download-only", action="store_true",
+                        help="Download pinned upstream sources and verified weights without converting")
+    args = parser.parse_args(argv)
     source = args.models_dir/".sources"
     for name, metadata in SOURCES.items():
         folder = source/name
@@ -51,6 +52,11 @@ def main():
         (folder/"revision.json").write_text(json.dumps({k: metadata[k] for k in ("repo", "sha")}))
     for name, (file, url, checksum) in WEIGHTS.items():
         download(url, source/file, checksum)
+    if args.download_only:
+        print(f"Upstream sources and verified weights downloaded to {source}")
+        return
+    from convert_models import export
+    for name in WEIGHTS:
         export(name, source, args.models_dir/name)
 
 

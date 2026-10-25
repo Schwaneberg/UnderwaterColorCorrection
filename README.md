@@ -33,9 +33,15 @@ spatial/temporal denoise in the inspector and CLI.
 The [AI workflow guide](docs/ai-workflow.md) covers installed UDnet enhancement,
 FastDVDnet temporal denoise, automatic levels/white balance, learning the look
 of a corrected reference, background stabilization, and opt-in OpenAI/Claude
-grading advice. On this machine, launch `.venv-gpu/bin/python -m uwcc` for the
-validated NVIDIA GPU runtime, or `.venv-models/bin/python -m uwcc` for CPU-only
-inference/model tooling.
+grading advice. Model weights are downloaded from their original upstream hosts
+and converted locally; this repository contains manifests and license notices,
+without redistributing model binaries. Follow the [model setup](models/README.md)
+to prepare them.
+
+Optional AI dependencies are available as `.[ml]` (CPU), `.[ml-nvidia]`
+(NVIDIA CUDA on Linux/Windows), and `.[ml-amd]` (AMD via DirectML on Windows).
+Install one ML extra per environment. See [GPU setup](docs/gpu-setup.md) for
+installation commands, driver requirements, verification, and platform limits.
 
 ## Product direction
 

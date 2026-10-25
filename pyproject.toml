@@ -13,6 +13,9 @@ dependencies = ["numpy>=1.26", "Pillow>=10", "PySide6>=6.6"]
 
 [project.optional-dependencies]
 ml = ["onnxruntime>=1.17"]
+# Install exactly one ML extra per environment: these packages share a module.
+ml-nvidia = ["onnxruntime-gpu[cuda,cudnn]>=1.21; sys_platform == 'linux' or sys_platform == 'win32'"]
+ml-amd = ["onnxruntime-directml>=1.17; sys_platform == 'win32'"]
 vision = ["opencv-python-headless>=4.10"]
 test = ["pytest>=8"]
 

@@ -7,10 +7,14 @@ background stabilization, and opt-in cloud grading advice.
 
 ## Run the installed local AI models
 
-This checkout has converted, checksum-verified UDnet V1 and FastDVDnet models
-in `models/`. UDnet needs ONNX Runtime; FastDVDnet can run through OpenCV DNN.
-The isolated CPU model environment includes both runtimes and sees the system
-Qt binding:
+For a new environment, follow [optional CPU/NVIDIA/AMD setup](gpu-setup.md).
+The paths below describe environments already prepared on this checkout.
+
+Model binaries are not included in Git or republished by this project. Follow
+the [model setup guide](../models/README.md) to download pinned upstream weights
+and convert them locally. After preparation, `models/` contains checksum-verified
+UDnet V1 and FastDVDnet models. UDnet needs ONNX Runtime; FastDVDnet can run
+through OpenCV DNN. With the CPU model environment prepared:
 
 ```bash
 .venv-models/bin/python -m uwcc models
@@ -135,8 +139,8 @@ To prepare the same setup on a compatible NVIDIA system, keep GPU and CPU ORT
 packages in separate environments:
 
 ```bash
-python3 -m venv --system-site-packages .venv-gpu
-.venv-gpu/bin/python -m pip install 'onnxruntime-gpu[cuda,cudnn]'
+python3 -m venv .venv-gpu
+.venv-gpu/bin/python -m pip install -e '.[ml-nvidia,vision]'
 .venv-models/bin/python tools/prepare_gpu_denoise.py
 .venv-gpu/bin/python tools/validate_gpu_denoise.py
 ```
@@ -212,9 +216,11 @@ The application never downloads weights automatically. Model preparation is an
 explicit setup step, separate from opening videos or projects:
 
 ```bash
-python3 -m venv --system-site-packages .venv-models
+python3 -m venv .venv-models
+.venv-models/bin/python -m pip install --upgrade pip
+.venv-models/bin/python -m pip install -e '.[ml,vision]'
 .venv-models/bin/python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
-.venv-models/bin/python -m pip install onnx onnxscript onnxruntime
+.venv-models/bin/python -m pip install onnx onnxscript
 .venv-models/bin/python tools/prepare_models.py
 python3 setup.py build_ext --inplace
 ```

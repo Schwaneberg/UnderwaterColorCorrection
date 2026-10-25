@@ -1,6 +1,5 @@
 .venv/
-.venv-models/
-.venv-gpu/
+.venv-*/
 models/.sources/
 models/**/*.onnx
 __pycache__/

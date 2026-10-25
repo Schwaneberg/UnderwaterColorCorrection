@@ -68,6 +68,10 @@ class Network:
                              if p in ort.get_available_providers()]
                 if cpu_only or os.environ.get("UWCC_INFERENCE_DEVICE") == "cpu":
                     providers = ["CPUExecutionProvider"]
+                if "DmlExecutionProvider" in providers:
+                    # DirectML cannot initialize with memory patterns or parallel execution.
+                    options.enable_mem_pattern = False
+                    options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
                 if "CUDAExecutionProvider" in providers and hasattr(ort, "preload_dlls"):
                     # Make pip-installed CUDA/cuDNN libraries available before
                     # ORT loads its provider. CPU-only installations skip this.

@@ -28,6 +28,11 @@ without system packages cannot see those distribution packages; use `python3`
 for the distribution-package route. Windows users can install FFmpeg on PATH
 and use the same Python package, but a Windows build has not been validated.
 
+For optional local AI, install one of the `ml`, `ml-nvidia`, or `ml-amd` extras.
+The [GPU setup guide](gpu-setup.md) covers NVIDIA CUDA on Linux/Windows,
+AMD DirectML on Windows, CPU fallback, and runtime verification. AMD GPU
+inference on Linux is not currently supported by UWCC.
+
 ## First correction
 
 1. Choose **Open video** or drop a video on the workspace.
