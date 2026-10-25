@@ -1,0 +1,30 @@
+.venv/
+.venv-models/
+.venv-gpu/
+models/.sources/
+models/**/*.onnx
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+*.uwcc-project.json
+*.uwcc-analysis.npz
+*.partial
+*.so
+*.pyd
+benchmarks/results/
+
+# Local credentials and agent configuration
+.aws/
+.codex/
+.agents/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local camera footage for manual benchmarks
+tests/clips/

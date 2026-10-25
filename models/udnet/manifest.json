@@ -1,0 +1,20 @@
+{
+  "model_id": "UDnet V1",
+  "model_version": "paper",
+  "task": "enhance",
+  "size": 256,
+  "color_space": "srgb",
+  "layout": "NCHW",
+  "schema_version": 1,
+  "file": "model.onnx",
+  "onnx_sha256": "3665f8815ca826a4bc978fdf679046194fa656a723ee42b53df2b0436292cef2",
+  "code_license": "MIT",
+  "weights_license": "MIT",
+  "runtime": "onnxruntime",
+  "upstream": {
+    "repo": "alzayats/UDnet",
+    "sha": "d6b196bfef05b91eca0a05925686276a85af5f6c"
+  },
+  "weights_sha256": "4ab7c8e7a9578c986b583259e3968684e6a00ad179df5bcd0725e282e0519816",
+  "conversion_max_error": 1.9371509552001953e-06
+}
