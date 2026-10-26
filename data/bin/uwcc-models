@@ -1,0 +1,4 @@
+#!/usr/bin/python3
+from uwcc.model_setup import main
+
+raise SystemExit(main())

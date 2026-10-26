@@ -1,0 +1,26 @@
+#!/usr/bin/python3
+"""Check installed conversion dependencies and NVIDIA commands without downloads."""
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+
+with tempfile.TemporaryDirectory(prefix="uwcc-model-tools-") as directory:
+    os.chdir(directory)
+    os.environ["XDG_DATA_HOME"] = directory
+    import torch
+    import onnx
+    import onnxruntime as ort
+    from onnxruntime.transformers.float16 import convert_float_to_float16
+    from uwcc.model_setup import tool_directory
+    assert (tool_directory()/"prepare_models.py").is_file()
+    for command in ("uwcc-models", "uwcc-nvidia", "uwcc-nvidia-setup"):
+        subprocess.run([command, "--help"], check=True)
+    # The actual converter uses the legacy exporter, without onnxscript.
+    path = Path(directory)/"identity.onnx"
+    torch.onnx.export(torch.nn.Identity(), (torch.ones(1),), str(path),
+                      opset_version=17, dynamo=False)
+    onnx.checker.check_model(onnx.load(path))
+    session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+    assert session.run(None, {session.get_inputs()[0].name: torch.ones(1).numpy()})[0][0] == 1
+    print("Installed model conversion dependencies and optional commands passed.")

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Underwater Color Correction (NVIDIA)
+GenericName=Video Color Correction
+Comment=Correct underwater video colors using a prepared NVIDIA runtime
+Exec=uwcc-nvidia gui %f
+TryExec=uwcc-nvidia
+Icon=uwcc
+Terminal=false
+Categories=AudioVideo;Video;
+Keywords=underwater;video;color;correction;diving;NVIDIA;
+StartupNotify=false

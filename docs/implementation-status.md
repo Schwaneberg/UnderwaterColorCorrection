@@ -5,6 +5,12 @@ specifications remain the v1 target; this file records actual implementation.
 
 ## Implemented
 
+- Initial Ubuntu 26.04 Debian source/binary packaging, desktop launcher/icon,
+  native Python/Qt/FFmpeg dependencies, build CI and installed-package smoke test.
+  User model storage follows XDG data paths; source-checkout models still work.
+- Optional `uwcc-model-tools` package for CPU model download/conversion, and
+  `uwcc-nvidia` for explicit user-owned CUDA runtime installation and launch.
+
 - Qt desktop workspace with split/original/corrected comparison, draggable split,
   proxy zoom/panning, timeline seeking, and background proxy playback.
 - Preview-resolution histogram, waveform, RGB parade, and vectorscope.
@@ -51,7 +57,8 @@ specifications remain the v1 target; this file records actual implementation.
 
 ## Remaining before v1
 
-- Distribution packaging of verified neural models, broader real-camera/color
+- GUI preparation of upstream model downloads and local conversion,
+  broader real-camera/color
   chart validation, neural stabilization, full-frame spatial neural enhancement,
   calibrated confidence, and certified temporal/flicker/quality measurements.
   Actual C0201 comparisons and a user-corrected reference are available; they

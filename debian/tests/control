@@ -1,0 +1,6 @@
+Tests: smoke
+Depends: @
+
+Tests: model-tools
+Depends: uwcc-model-tools, uwcc-nvidia
+Architecture: amd64

@@ -1,0 +1,41 @@
+#!/usr/bin/python3
+"""Check the installed application without importing from a source checkout."""
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+
+
+installation = Path(os.environ.get("UWCC_TEST_ROOT", "/"))
+with tempfile.TemporaryDirectory(prefix="uwcc-installed-") as temporary:
+    root = Path(temporary)
+    os.chdir(root)
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    os.environ["XDG_DATA_HOME"] = str(root/"data")
+    os.environ["XDG_CACHE_HOME"] = str(root/"cache")
+    os.environ.pop("UWCC_MODEL_DIR", None)
+    import uwcc
+    from uwcc import _native
+    from uwcc.gui import MainWindow
+    from uwcc.qt import QtWidgets
+    from uwcc.project import model_directory
+    assert Path(uwcc.__file__).is_relative_to(installation/"usr/lib/python3/dist-packages")
+    assert model_directory() == root/"data/uwcc/models"
+    assert (installation/"usr/share/applications/uwcc.desktop").is_file()
+    assert (installation/"usr/share/icons/hicolor/scalable/apps/uwcc.svg").is_file()
+    app = QtWidgets.QApplication([])
+    window = MainWindow()
+    window.close()
+    subprocess.run(["uwcc", "--help"], check=True)
+    subprocess.run(["uwcc", "models"], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                    "testsrc2=size=64x64:rate=4:duration=1", "-c:v", "libx264",
+                    "-threads", "1", "source.mp4"], check=True)
+    subprocess.run(["uwcc", "analyze", "source.mp4", "--profile", "rec709",
+                    "--auto-method", "adaptive", "--project", "test.json"], check=True)
+    subprocess.run(["uwcc", "render", "test.json", "output.mp4"], check=True)
+    frames = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                                      "-count_frames", "-show_entries", "stream=nb_read_frames",
+                                      "-of", "csv=p=0", "output.mp4"], text=True).strip()
+    assert frames == "4", frames
+    print("Installed UWCC desktop, native kernels, analysis, and export passed.")

@@ -167,6 +167,8 @@ def main(argv=None):
         elif args.command == "models":
             import importlib.util
             from .neural import builtin_model
+            from .project import model_directory
+            print("Model directory:", model_directory())
             for task in ("enhance", "denoise"):
                 manifest = builtin_model(task)
                 print(f"{task}: {manifest or 'not installed'}")

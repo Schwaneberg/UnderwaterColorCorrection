@@ -17,3 +17,28 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: python3 -m pytest -q
+
+  debian-package:
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Debian build tools and declared dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential dpkg-dev python3 git lintian
+          DEBIAN_FRONTEND=noninteractive apt-get build-dep -y .
+      - name: Build binary and source packages
+        run: |
+          python3 tools/build_deb.py
+          lintian dist/debian/uwcc_*_amd64.changes
+          python3 tools/build_deb.py --source
+      - name: Install and smoke test the package
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ./dist/debian/uwcc_*_amd64.deb ./dist/debian/uwcc-model-tools_*_all.deb ./dist/debian/uwcc-nvidia_*_amd64.deb
+          debian/tests/smoke
+          debian/tests/model-tools
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uwcc-ubuntu-26.04
+          path: dist/debian/*

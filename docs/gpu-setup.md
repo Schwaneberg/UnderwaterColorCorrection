@@ -1,5 +1,10 @@
 # Optional AI runtime and GPU setup
 
+For the Ubuntu `.deb` installation, use `uwcc-model-tools` and `uwcc-nvidia`
+with the [packaged setup commands](ubuntu-packaging.md#nvidia-runtime).
+The Python extras and virtual environments below are the source/Python-package
+alternative.
+
 UWCC runs classical correction without an AI runtime. Local neural enhancement
 and FastDVDnet denoise need model files and an inference runtime. Install from
 the repository root with Python 3.12+; FFmpeg/ffprobe must also be on PATH.
@@ -98,8 +103,9 @@ environment. `UWCC_MODEL_DIR` can point to a different models directory.
 Run `python -m uwcc models` with the Python executable of the new environment.
 The provider list should include `CUDAExecutionProvider` for NVIDIA or
 `DmlExecutionProvider` for DirectML. This lists available providers; actual
-session initialization and inference may still fail. Open a clip, choose
-**Local AI enhancement + white balance**, and run **Auto correct**. For denoise,
+session initialization and inference may still fail. Open a clip and choose
+**Local AI enhancement + white balance**; analysis starts automatically once
+the input color profile is known. For denoise,
 enable **Use FastDVDnet AI denoise**, set a nonzero denoise strength, and export.
 Export progress reports `CUDA GPU · ONNX Runtime` or
 `DirectML GPU · ONNX Runtime` when that provider is active. Unsupported model

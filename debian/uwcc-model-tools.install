@@ -1,0 +1,5 @@
+data/bin/uwcc-models usr/bin
+tools/prepare_models.py usr/share/uwcc/model-tools
+tools/convert_models.py usr/share/uwcc/model-tools
+tools/prepare_gpu_denoise.py usr/share/uwcc/model-tools
+tools/validate_gpu_denoise.py usr/share/uwcc/model-tools

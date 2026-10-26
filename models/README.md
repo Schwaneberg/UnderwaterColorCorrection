@@ -14,6 +14,14 @@ expected SHA-256 checksums:
 
 ## Download and convert
 
+On Ubuntu with the `uwcc-model-tools` package installed, run
+`uwcc-models prepare` as your desktop user. This uses Ubuntu's conversion
+dependencies and stores models in `~/.local/share/uwcc/models` (honoring
+`XDG_DATA_HOME` and `UWCC_MODEL_DIR`). No source checkout or pip installation
+is needed for CPU conversion. See the
+[Ubuntu package guide](../docs/ubuntu-packaging.md) for installation and NVIDIA
+setup. The commands below are the alternative source-checkout workflow.
+
 Run from the repository root with Python 3.12+ and network access. A separate
 CPU environment is sufficient for conversion, even if inference will use a GPU:
 
@@ -55,6 +63,14 @@ Use `--models-dir /path/to/models` for another output directory, then set
 files beside their generated manifests: conversion tool versions can affect
 binary hashes, so a checked-in manifest alone is not sufficient. Rebuilding
 can update the tracked manifests with hashes and measurements for your output.
+
+## User model storage
+
+For an installed Ubuntu package, use `--models-dir "$HOME/.local/share/uwcc/models"`
+on preparation and validation commands to store models outside the checkout.
+Adjust this path if `XDG_DATA_HOME` is set. UWCC searches this user directory
+first; `UWCC_MODEL_DIR` provides an explicit override. See
+[Ubuntu model storage](../docs/ubuntu-packaging.md#user-model-storage).
 
 ## Optional NVIDIA variants
 

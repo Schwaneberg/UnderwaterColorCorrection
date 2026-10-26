@@ -277,6 +277,7 @@ class MainWindow(W.QMainWindow):
         self.history, self.future, self.workers = [], [], []
         self.position = 0.
         self.playback = self.operation = self.preview_worker = None
+        self.analysis_pending = False
         self.preview_pending = False
         self.generation = 0
         self.batch_dialog = None
@@ -287,6 +288,10 @@ class MainWindow(W.QMainWindow):
         self.preview_timer.setSingleShot(True)
         self.preview_timer.setInterval(100)
         self.preview_timer.timeout.connect(self.request_preview)
+        self.analysis_timer = C.QTimer(self)
+        self.analysis_timer.setSingleShot(True)
+        self.analysis_timer.setInterval(200)
+        self.analysis_timer.timeout.connect(self.start_pending_analysis)
         self.autosave = C.QTimer(self)
         self.autosave.setSingleShot(True)
         self.autosave.setInterval(2000)
@@ -310,7 +315,8 @@ class MainWindow(W.QMainWindow):
         self.undo_action = action("Undo", self.undo, "Ctrl+Z")
         self.redo_action = action("Redo", self.redo, "Ctrl+Shift+Z")
         toolbar.addSeparator()
-        self.analyze_action = action("Auto correct", self.auto_correct, "Ctrl+Return")
+        self.reanalyze_shortcut = G.QShortcut(G.QKeySequence("Ctrl+Return"), self)
+        self.reanalyze_shortcut.activated.connect(self.schedule_analysis)
         action("Batch…", self.batch)
         self.export_action = action("Export…", self.export_video, "Ctrl+E")
         toolbar.addSeparator()
@@ -514,7 +520,7 @@ class MainWindow(W.QMainWindow):
             W.QMessageBox.warning(self, "UWCC", message)
 
     def task(self, operation, success):
-        if self.operation and self.operation.isRunning():
+        if self.operation is not None:
             self.error("Wait for the current task or cancel it first.")
             return
         worker = Worker(operation, self)
@@ -537,15 +543,19 @@ class MainWindow(W.QMainWindow):
         self.workers = [item for item in self.workers if item is not worker]
         worker.deleteLater()
         self.update_enabled()
+        if self.analysis_pending:
+            self.analysis_timer.start()
 
     def cancel_operation(self):
+        self.analysis_pending = False
+        self.analysis_timer.stop()
         if self.operation:
             self.operation.cancel.set()
 
     def update_enabled(self):
         ready = self.project is not None
         busy = self.operation is not None and self.operation.isRunning()
-        for action in (self.save_action, self.analyze_action, self.export_action):
+        for action in (self.save_action, self.export_action):
             action.setEnabled(ready and not busy)
         self.control_area.setEnabled(ready)
         self.stabilize.setEnabled(ready)
@@ -598,6 +608,8 @@ class MainWindow(W.QMainWindow):
         self.task(operation, self.opened)
 
     def opened(self, pair):
+        self.analysis_pending = False
+        self.analysis_timer.stop()
         self.info, self.project = pair
         self.pending_preset = None
         self.generation += 1
@@ -614,7 +626,10 @@ class MainWindow(W.QMainWindow):
         self.sync_controls()
         self.request_preview()
         self.update_enabled()
-        self.statusBar().showMessage("Confirm the input color profile." if self.project.grade.input_profile == "auto" else "Ready. Use Auto correct to analyze the clip.")
+        if self.project.analysis is None:
+            self.schedule_analysis()
+        else:
+            self.statusBar().showMessage("Ready. Saved correction loaded.")
 
     def open_project(self):
         if not self.confirm_discard():
@@ -675,6 +690,8 @@ class MainWindow(W.QMainWindow):
         self.autosave.start()
         self.preview_timer.start()
         self.update_enabled()
+        if self.project.analysis is None:
+            self.schedule_analysis()
 
     def undo(self):
         if self.history:
@@ -736,11 +753,14 @@ class MainWindow(W.QMainWindow):
             a = self.project.analysis
             self.engine_label.setText(f"{a['engine']}\n{a['shots']} shots · confidence {a['confidence']:.0%}\n"+"\n".join(a["warnings"]))
         elif self.project and self.project.grade.model_manifest:
-            self.engine_label.setText("ONNX model selected · run Auto correct to analyze.")
+            self.engine_label.setText("ONNX model selected.")
         else:
             method = self.project.grade.auto_method if self.project else "ai"
-            self.engine_label.setText("Local AI requested; adaptive levels/white balance if unavailable.\nRun Auto correct to analyze."
-                                     if method == "ai" else "Automatic levels and gray-edge white balance.\nRun Auto correct to analyze.")
+            self.engine_label.setText("Local AI requested; adaptive levels/white balance if unavailable."
+                                     if method == "ai" else "Automatic levels and gray-edge white balance.")
+        if self.project and self.project.analysis is None:
+            if self.project.grade.input_profile == "auto":
+                self.engine_label.setText("Choose the input color profile to start automatic analysis.")
 
     def control_changed(self, name, value):
         if not self.project:
@@ -899,6 +919,26 @@ class MainWindow(W.QMainWindow):
             self.sync_controls()
             self.changed()
 
+    def schedule_analysis(self):
+        """Debounce input edits and wait for the current task before analyzing."""
+        if not self.project:
+            return
+        if self.project.grade.input_profile == "auto":
+            self.analysis_pending = False
+            self.analysis_timer.stop()
+            self.statusBar().showMessage("Choose the input color profile to start automatic analysis.")
+            self.update_engine()
+            return
+        self.analysis_pending = True
+        self.analysis_timer.start()
+        self.statusBar().showMessage("Automatic analysis queued.")
+
+    def start_pending_analysis(self):
+        if self.analysis_pending and self.operation is None:
+            self.analysis_pending = False
+            if self.project and self.project.analysis is None:
+                self.auto_correct()
+
     def auto_correct(self):
         if not self.project:
             return
@@ -906,15 +946,15 @@ class MainWindow(W.QMainWindow):
             self.error("Choose the input color profile first. Sony log profiles cannot be inferred reliably from the file.")
             return
         self.stop_playback()
-        snapshot, info = clone(self.project), self.info
+        project = self.project
+        snapshot, info = clone(project), self.info
         def complete(result):
-            if (self.project.grade.input_profile != snapshot.grade.input_profile
+            if (self.project is not project
+                or self.project.grade.input_profile != snapshot.grade.input_profile
                 or self.project.grade.filter_hint != snapshot.grade.filter_hint
                 or self.project.grade.auto_method != snapshot.grade.auto_method
                 or self.project.grade.model_manifest != snapshot.grade.model_manifest):
-                self.error("Input settings changed during analysis; run Auto correct again.")
                 return
-            self.remember()
             self.project.analysis = result
             self.update_engine()
             self.changed()
@@ -1128,6 +1168,8 @@ class MainWindow(W.QMainWindow):
 
     def about(self):
         W.QMessageBox.information(self, "About UWCC", f"UWCC {__version__} · GPL-3.0-or-later\n\n"
+            "Maintainer: Oliver Schwaneberg\n"
+            "Heavily developed using AI assistance from OpenAI Codex.\n\n"
             "Local underwater color correction.\nClassical adaptive engine included; optional local ONNX model.\n"
             "Shared float32 CPU correction for preview and render.\n\n"
             "Current limitations: no bundled ML weights;\n"
@@ -1143,6 +1185,8 @@ class MainWindow(W.QMainWindow):
             self.preview_worker.cancel.set()
             self.preview_worker.wait(3000)
         self.autosave.stop()
+        self.analysis_pending = False
+        self.analysis_timer.stop()
         event.accept()
 
 

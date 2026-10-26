@@ -1,0 +1,3 @@
+data/bin/uwcc-nvidia usr/bin
+data/bin/uwcc-nvidia-setup usr/bin
+data/uwcc-nvidia.desktop usr/share/applications

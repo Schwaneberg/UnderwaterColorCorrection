@@ -13,6 +13,11 @@ and an optional local ONNX model interface. No trained model is bundled.
 
 ## Run
 
+Initial Ubuntu 26.04 `.deb` packaging is available for local builds. See the
+[Ubuntu packaging guide](docs/ubuntu-packaging.md) for build/install commands,
+desktop integration, user model storage, and preparation of a PPA source upload.
+No PPA or official Ubuntu archive package has been published yet.
+
 With Python 3.12+, FFmpeg, NumPy, Pillow, and PySide6 or PyQt6 installed:
 
 ```bash

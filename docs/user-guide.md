@@ -40,8 +40,11 @@ inference on Linux is not currently supported by UWCC.
    Sony log profile used in the camera. UWCC does not infer a Sony picture
    profile from the camera model or filename.
 3. Set the capture-filter hint if you used a red or magenta filter.
-4. Choose **Auto correct**. The current engine, confidence, and signal warnings
-   appear in the inspector. The supplied classical engine needs no model.
+4. Analysis starts automatically after opening the clip, or after choosing an
+   input profile if the file's profile is ambiguous. The current engine,
+   confidence, and signal warnings appear in the inspector. Changing the input
+   profile, filter hint, correction method, or model triggers fresh analysis.
+   The supplied classical engine needs no model.
 5. Drag the comparison divider, scrub the timeline, and adjust strength and
    finishing controls. A 0% strength disables automatic correction while keeping
    manual controls active. **Original** bypasses all corrections except input
@@ -178,7 +181,10 @@ python3 -m uwcc relink dive.uwcc-project.json /new/path/dive.mp4
 ```
 
 For changed media the command preserves manual edits and discards old analysis.
-Reopen the project and run Auto correct again.
+Reopen the project; missing analysis is regenerated automatically once the
+input profile is selected. Saved analysis, including a learned reference look,
+is retained. Use **Cancel task** to stop analysis; **Ctrl+Return** retries
+missing analysis after cancellation or an error.
 
 ## Command line
 

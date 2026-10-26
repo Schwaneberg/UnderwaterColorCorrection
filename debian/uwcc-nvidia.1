@@ -1,0 +1,40 @@
+.TH UWCC-NVIDIA 1 "October 2026" "UWCC 0.1.0" "User Commands"
+.SH NAME
+uwcc-nvidia, uwcc-nvidia-setup \- private NVIDIA runtime for UWCC
+.SH SYNOPSIS
+.B uwcc-nvidia-setup
+.RI [ --yes ]
+.br
+.B uwcc-nvidia
+.RI [ UWCC-arguments ]
+.br
+.B uwcc-nvidia model-tools
+.RI [ model-tool-arguments ]
+.SH DESCRIPTION
+The setup command creates a user-owned virtual environment, downloads pinned
+ONNX Runtime GPU 1.31.0 with CUDA/cuDNN libraries from PyPI, and checks actual
+CUDA inference. Run it as your desktop user, without sudo. Downloads may total
+several gigabytes. A compatible NVIDIA GPU and driver must already be installed.
+.PP
+The launcher validates the environment and runs the apt-managed UWCC application
+using its Python interpreter. It refuses to launch if CUDA validation fails;
+the regular uwcc command remains available for CPU execution.
+.PP
+The model-tools subcommand runs model preparation or GPU validation inside
+the NVIDIA environment. It requires the uwcc-model-tools package.
+.SH OPTIONS
+.TP
+.B --yes
+Accept the setup download without an interactive prompt.
+.SH ENVIRONMENT
+.TP
+.B UWCC_NVIDIA_ENV
+Override the private environment directory. By default it is located under
+$XDG_DATA_HOME/uwcc/runtimes with the Python ABI and ONNX Runtime version in
+the directory name. XDG_DATA_HOME defaults to ~/.local/share.
+.PP
+Models use UWCC_MODEL_DIR or the normal UWCC user data directory. Neither
+setup nor launch installs drivers or downloads weights.
+.SH SEE ALSO
+.BR uwcc (1),
+.BR uwcc-models (1)

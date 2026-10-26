@@ -1,0 +1,71 @@
+.TH UWCC 1 "October 2026" "UWCC 0.1.0" "User Commands"
+.SH NAME
+uwcc \- local underwater video color correction
+.SH SYNOPSIS
+.B uwcc
+.br
+.B uwcc gui
+.RI [ video ]
+.br
+.B uwcc
+.I command
+.RI [ options ]
+.SH DESCRIPTION
+UWCC provides a desktop workspace and command-line tools for underwater video
+color correction, presets, batch jobs, stabilization, and export.
+Without a command, the desktop workspace opens.
+Classical correction works without model weights or an AI runtime.
+.SH COMMANDS
+.TP
+.B gui
+Open the desktop workspace, optionally opening a video.
+.TP
+.B probe
+Print video metadata.
+.TP
+.B analyze
+Analyze a video and save a project. An explicit input color profile is required.
+.TP
+.B render
+Render a saved project to a video file.
+.TP
+.B batch
+Analyze and render multiple videos.
+.TP
+.B relink
+Relink a project to a source video, discarding stale analysis.
+.TP
+.B learn-reference
+Learn a grade from an aligned corrected reference clip.
+.TP
+.B advise
+Request optional cloud grading advice. Upload requires explicit opt-in and
+provider credentials.
+.TP
+.B models
+Show the model directory, discovered manifests, and inference runtime providers.
+.PP
+Use
+.B uwcc COMMAND --help
+for each command's arguments and options.
+.SH ENVIRONMENT
+.TP
+.B XDG_DATA_HOME
+Application data root. Defaults to ~/.local/share.
+.TP
+.B UWCC_MODEL_DIR
+Override the model directory. Models are otherwise read from
+$XDG_DATA_HOME/uwcc/models. The application does not download models automatically.
+.TP
+.B UWCC_INFERENCE_DEVICE
+Set to cpu to force CPU inference; auto enables automatic provider selection.
+.SH FILES
+.TP
+.I ~/.local/share/uwcc/
+User data, recovery state, and optional models. Application removal preserves
+this directory.
+.SH SEE ALSO
+.BR ffmpeg (1),
+.BR ffprobe (1)
+.PP
+Project documentation: https://github.com/Schwaneberg/UnderwaterColorCorrection

@@ -6,15 +6,22 @@ from pathlib import Path
 import numpy as np
 
 from .errors import UWCCError
-from .project import read_json
+from .project import model_directory, read_json
 
 ALLOWED = {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "CC0-1.0", "GPL-3.0-or-later"}
 
 
 def builtin_model(task):
-    root = Path(os.environ.get("UWCC_MODEL_DIR", Path(__file__).resolve().parent.parent/"models"))
-    path = root/("udnet" if task == "enhance" else "fastdvdnet")/"manifest.json"
-    return str(path) if path.is_file() else None
+    roots = [model_directory()]
+    # Preserve existing source-checkout setups without searching system packages.
+    checkout = Path(__file__).resolve().parent.parent
+    if not os.environ.get("UWCC_MODEL_DIR") and (checkout/"pyproject.toml").is_file():
+        roots.append(checkout/"models")
+    for root in roots:
+        path = root/("udnet" if task == "enhance" else "fastdvdnet")/"manifest.json"
+        if path.is_file():
+            return str(path)
+    return None
 
 
 def artifact(manifest, task):

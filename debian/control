@@ -1,0 +1,83 @@
+Source: uwcc
+Section: video
+Priority: optional
+Maintainer: Oliver Schwaneberg <oliver.schwaneberg@gmail.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-python,
+ pybuild-plugin-pyproject,
+ python3-all-dev (>= 3.12),
+ python3-setuptools (>= 68),
+ python3-wheel,
+ python3-numpy,
+ python3-pil,
+ python3-pyqt6,
+ python3-opencv,
+ python3-pytest <!nocheck>,
+ ffmpeg <!nocheck>,
+ desktop-file-utils,
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Homepage: https://github.com/Schwaneberg/UnderwaterColorCorrection
+Vcs-Git: https://github.com/Schwaneberg/UnderwaterColorCorrection.git
+Vcs-Browser: https://github.com/Schwaneberg/UnderwaterColorCorrection
+
+Package: uwcc
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ ${shlibs:Depends},
+ python3-numpy (>= 1.26),
+ python3-pil (>= 10),
+ python3-pyqt6 (>= 6.6),
+ ffmpeg,
+Recommends:
+ python3-opencv (>= 4.10),
+ python3-pyqt6.qtmultimedia,
+Description: local underwater video color correction
+ Desktop application and command-line tools for underwater video correction,
+ with adaptive white balance, temporal smoothing, editable grades, presets,
+ batch processing, stabilization, and video export.
+ .
+ Classical correction works offline without model weights. Neural enhancement
+ and denoise require separately prepared models and an optional inference
+ runtime. Model weights and GPU runtimes are not included in this package.
+
+Package: uwcc-model-tools
+Architecture: all
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ uwcc (= ${binary:Version}),
+ python3-torch (>= 2.6),
+ python3-onnx (>= 1.17),
+ python3-onnxruntime (>= 1.21),
+ python3-opencv (>= 4.10),
+ ca-certificates,
+Description: upstream model download and conversion tools for UWCC
+ Provides uwcc-models to download pinned upstream weights, verify checksums,
+ convert models to ONNX, and prepare optional NVIDIA denoise variants.
+ .
+ Conversion uses Ubuntu's CPU PyTorch and ONNX packages. Downloads and
+ conversion are explicit user operations, never package installation hooks.
+ No model weights are redistributed.
+
+Package: uwcc-nvidia
+Architecture: amd64
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ uwcc (= ${binary:Version}),
+ python3-venv,
+ ca-certificates,
+Recommends: uwcc-model-tools (= ${binary:Version})
+Description: private NVIDIA runtime setup and launcher for UWCC
+ Provides uwcc-nvidia-setup to install a pinned ONNX Runtime CUDA wheel and
+ its CUDA/cuDNN libraries into a user-owned Python environment, and
+ uwcc-nvidia to launch UWCC using that environment.
+ .
+ Setup requires explicit invocation, network access, and a compatible
+ NVIDIA GPU and driver. It validates CUDA inference before enabling launch.
+ System Python and GPU drivers are not modified. CUDA libraries and model
+ weights are not included in the Debian package.

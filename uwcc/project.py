@@ -45,15 +45,22 @@ def defaults():
     return {key: float(item[3]) for key, item in CONTROLS.items()}
 
 
-def user_directory(kind="data") -> Path:
+def user_directory(kind="data", *, create=True) -> Path:
     if os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local")))
     else:
         variable, suffix = ("XDG_CACHE_HOME", ".cache") if kind == "cache" else ("XDG_DATA_HOME", ".local/share")
         root = Path(os.environ.get(variable, str(Path.home() / suffix)))
     result = root / "uwcc"
-    result.mkdir(parents=True, exist_ok=True)
+    if create:
+        result.mkdir(parents=True, exist_ok=True)
     return result
+
+
+def model_directory() -> Path:
+    """User-owned model storage, independent of the application installation."""
+    override = os.environ.get("UWCC_MODEL_DIR")
+    return Path(override).expanduser() if override else user_directory(create=False)/"models"
 
 
 def fingerprint(path: Path) -> dict:

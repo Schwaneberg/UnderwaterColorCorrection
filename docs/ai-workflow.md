@@ -21,8 +21,10 @@ through OpenCV DNN. With the CPU model environment prepared:
 .venv-models/bin/python -m uwcc
 ```
 
-Choose **Local AI enhancement + white balance**, confirm the input picture
-profile, and press **Auto correct**. UDnet predicts color references on proxy
+Opening a video starts analysis automatically. Choose **Local AI enhancement +
+white balance** and confirm the input picture profile; changing those settings
+automatically refreshes analysis. An ambiguous input profile must be selected
+before analysis starts. UDnet predicts color references on proxy
 frames at approximately half-second intervals. Each reference receives a
 levels/contrast/vibrance finish. White balance is not estimated a second time
 after the network. A regularized polynomial fit captures the color transform,

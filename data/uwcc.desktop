@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Underwater Color Correction
+GenericName=Video Color Correction
+Comment=Correct underwater video colors locally
+Exec=uwcc gui %f
+TryExec=uwcc
+Icon=uwcc
+Terminal=false
+Categories=AudioVideo;Video;
+MimeType=video/mp4;video/quicktime;video/x-matroska;video/x-msvideo;video/mp2t;
+Keywords=underwater;video;color;correction;diving;
+StartupNotify=false

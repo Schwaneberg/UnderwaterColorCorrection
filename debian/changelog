@@ -1,0 +1,16 @@
+uwcc (0.1.0-1~ppa2) resolute; urgency=medium
+
+  * Credit Oliver Schwaneberg as maintainer in the About dialog.
+  * Acknowledge extensive AI-assisted development using OpenAI Codex.
+  * Add uwcc-model-tools with Ubuntu CPU conversion dependencies.
+  * Add uwcc-nvidia with explicit private CUDA runtime setup and launcher.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Mon, 26 Oct 2026 22:00:00 +0100
+
+uwcc (0.1.0-1~ppa1) resolute; urgency=medium
+
+  * Initial Ubuntu package with native desktop integration and C kernels.
+  * Use Ubuntu Python, PyQt6, and FFmpeg dependencies.
+  * Discover user-installed AI models in the XDG data directory.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Mon, 26 Oct 2026 12:00:00 +0100

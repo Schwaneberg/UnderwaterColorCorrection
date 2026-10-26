@@ -8,6 +8,17 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+.pybuild/
+debian/.debhelper/
+debian/.test-*/
+debian/uwcc/
+debian/uwcc-dbgsym/
+debian/uwcc-model-tools/
+debian/uwcc-nvidia/
+debian/debhelper-build-stamp
+debian/files
+debian/*.debhelper
+debian/*.substvars
 *.uwcc-project.json
 *.uwcc-analysis.npz
 *.partial

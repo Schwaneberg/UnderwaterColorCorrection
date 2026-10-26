@@ -1,0 +1,35 @@
+.TH UWCC-MODELS 1 "October 2026" "UWCC 0.1.0" "User Commands"
+.SH NAME
+uwcc-models \- download and prepare local UWCC models
+.SH SYNOPSIS
+.B uwcc-models
+.RI { prepare | prepare-gpu | validate-gpu }
+.RI [ --models-dir " DIRECTORY" ]
+.RI [ --download-only ]
+.SH DESCRIPTION
+Download pinned weights from their original upstream hosts, verify checksums,
+and convert them to ONNX. Run as your desktop user, without sudo.
+No models are downloaded during Debian package installation.
+.SH COMMANDS
+.TP
+.B prepare
+Download UDnet and FastDVDnet sources and weights, convert models, and validate
+inference parity using CPU PyTorch and ONNX.
+.TP
+.B prepare-gpu
+Prepare dynamic FP32/FP16 FastDVDnet graphs from previously downloaded weights.
+.TP
+.B validate-gpu
+Validate and register the GPU variants. Requires an active CUDA runtime;
+use uwcc-nvidia model-tools validate-gpu after NVIDIA setup.
+.SH OPTIONS
+.TP
+.B --models-dir DIRECTORY
+Use the selected directory instead of UWCC_MODEL_DIR or the default
+$XDG_DATA_HOME/uwcc/models (normally ~/.local/share/uwcc/models).
+.TP
+.B --download-only
+Download sources and weights without conversion. Only valid with prepare.
+.SH SEE ALSO
+.BR uwcc (1),
+.BR uwcc-nvidia (1)

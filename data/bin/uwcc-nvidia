@@ -1,0 +1,4 @@
+#!/usr/bin/python3
+from uwcc.nvidia_runtime import launch_main
+
+raise SystemExit(launch_main())
