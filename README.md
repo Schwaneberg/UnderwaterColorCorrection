@@ -11,12 +11,37 @@ video-processing commands, together with the target v1 specifications. The
 current development version is 0.1.0; it includes classical adaptive correction
 and an optional local ONNX model interface. No trained model is bundled.
 
-## Run
+## Install on Ubuntu
 
-Initial Ubuntu 26.04 `.deb` packaging is available for local builds. See the
+Ubuntu 26.04 (amd64) packages are provided through the project's
+[UWCC PPA](https://launchpad.net/~oliver-schwaneberg-z/+archive/ubuntu/uwcc).
+Register the PPA, refresh the package index, and install the application:
+
+```bash
+sudo apt install software-properties-common
+sudo add-apt-repository ppa:oliver-schwaneberg-z/uwcc
+sudo apt update
+sudo apt install uwcc
+uwcc
+```
+
+Optional packages provide model download/conversion tools and the NVIDIA
+runtime setup and launcher:
+
+```bash
+sudo apt install uwcc-model-tools uwcc-nvidia
+```
+
+Model weights and the NVIDIA runtime require separate setup after installation;
+follow the [model setup instructions](models/README.md) and
+[Ubuntu package guide](docs/ubuntu-packaging.md). Package availability and build
+progress are listed on the [PPA package page](https://launchpad.net/~oliver-schwaneberg-z/+archive/ubuntu/uwcc/+packages).
+
+## Run from source
+
+Ubuntu 26.04 `.deb` packaging is also available for local builds. See the
 [Ubuntu packaging guide](docs/ubuntu-packaging.md) for build/install commands,
 desktop integration, user model storage, and preparation of a PPA source upload.
-No PPA or official Ubuntu archive package has been published yet.
 
 With Python 3.12+, FFmpeg, NumPy, Pillow, and PySide6 or PyQt6 installed:
 
