@@ -277,6 +277,7 @@ class MainWindow(W.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"UWCC {__version__} · Underwater Color Correction")
+        self.setWindowIcon(G.QIcon(str(Path(__file__).with_name("assets") / "uwcc.png")))
         self.resize(1380, 900)
         self.project = self.info = None
         self.pending_preset = None
@@ -1242,7 +1243,7 @@ class MainWindow(W.QMainWindow):
     def about(self):
         dialog = W.QMessageBox(self)
         dialog.setWindowTitle("About UWCC")
-        dialog.setIcon(W.QMessageBox.Icon.Information)
+        dialog.setIconPixmap(self.windowIcon().pixmap(80, 80))
         dialog.setTextFormat(C.Qt.TextFormat.RichText)
         dialog.setTextInteractionFlags(C.Qt.TextInteractionFlag.TextBrowserInteraction)
         dialog.setText(f"<p>UWCC {__version__} · GPL-3.0-or-later</p>"
@@ -1299,9 +1300,11 @@ def launch(path=None):
     app = W.QApplication.instance() or W.QApplication(sys.argv[:1])
     app.setApplicationName("UWCC")
     app.setOrganizationName("UWCC")
+    app.setDesktopFileName("uwcc")
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     window = MainWindow()
+    app.setWindowIcon(window.windowIcon())
     window.show()
     if path:
         C.QTimer.singleShot(0, lambda: window.open_video(path=path))

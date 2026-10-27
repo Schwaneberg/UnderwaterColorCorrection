@@ -25,6 +25,9 @@ uwcc = "uwcc.__main__:main"
 [tool.setuptools.packages.find]
 include = ["uwcc*"]
 
+[tool.setuptools.package-data]
+uwcc = ["assets/*.png"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

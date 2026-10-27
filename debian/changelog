@@ -1,3 +1,10 @@
+uwcc (0.1.0-1~ppa7) resolute; urgency=medium
+
+  * Use the supplied stingray reef artwork for application and desktop icons.
+  * Ship standard icon sizes and include the icon in Python distributions.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Tue, 27 Oct 2026 18:00:00 +0100
+
 uwcc (0.1.0-1~ppa6) resolute; urgency=medium
 
   * Detect supported input gamma/gamut metadata by default in GUI and CLI.

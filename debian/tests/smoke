@@ -22,9 +22,10 @@ with tempfile.TemporaryDirectory(prefix="uwcc-installed-") as temporary:
     assert Path(uwcc.__file__).is_relative_to(installation/"usr/lib/python3/dist-packages")
     assert model_directory() == root/"data/uwcc/models"
     assert (installation/"usr/share/applications/uwcc.desktop").is_file()
-    assert (installation/"usr/share/icons/hicolor/scalable/apps/uwcc.svg").is_file()
+    assert (installation/"usr/share/icons/hicolor/512x512/apps/uwcc.png").is_file()
     app = QtWidgets.QApplication([])
     window = MainWindow()
+    assert not window.windowIcon().isNull()
     window.close()
     subprocess.run(["uwcc", "--help"], check=True)
     subprocess.run(["uwcc", "models"], check=True)
