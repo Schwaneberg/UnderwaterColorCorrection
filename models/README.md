@@ -14,6 +14,11 @@ expected SHA-256 checksums:
 
 ## Download and convert
 
+For optional orientation detection, `uwcc-models prepare-orientation` downloads
+the upstream RightWayUp Max INT8 ONNX model directly, without conversion.
+This is separate from the enhancement/denoise preparation below. See the
+[orientation evaluation and setup](../docs/benchmarks/orientation.md).
+
 On Ubuntu with the `uwcc-model-tools` package installed, run
 `uwcc-models prepare` as your desktop user. This uses Ubuntu's conversion
 dependencies and stores models in `~/.local/share/uwcc/models` (honoring

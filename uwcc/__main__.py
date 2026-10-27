@@ -24,7 +24,7 @@ def parser():
     inspect.add_argument("video")
     analysis = commands.add_parser("analyze", help="Analyze a video and save a project")
     analysis.add_argument("video")
-    analysis.add_argument("--profile", required=True, choices=["rec709", "slog2", "slog3", "hlg", "pq"])
+    analysis.add_argument("--profile", default="auto", choices=["auto", "rec709", "slog2", "slog3", "hlg", "pq"])
     analysis.add_argument("--filter", default="auto", choices=["auto", "none", "red", "magenta"])
     analysis.add_argument("--output-profile", default="rec709", choices=["rec709", "hlg", "pq"])
     analysis.add_argument("--model", help="Local verified ONNX model manifest")
@@ -39,7 +39,7 @@ def parser():
     batch = commands.add_parser("batch", help="Analyze and render several videos independently")
     batch.add_argument("videos", nargs="+")
     batch.add_argument("--output-dir", required=True)
-    batch.add_argument("--profile", required=True, choices=["rec709", "slog2", "slog3", "hlg", "pq"])
+    batch.add_argument("--profile", default="auto", choices=["auto", "rec709", "slog2", "slog3", "hlg", "pq"])
     batch.add_argument("--preset")
     batch.add_argument("--format", default="h264", choices=["h264", "hevc", "dnxhr", "prores", "ffv1"])
     batch.add_argument("--queue", help="Persistent queue JSON path")
@@ -49,8 +49,9 @@ def parser():
     learn = commands.add_parser("learn-reference", help="Learn a time-dependent grade from a corrected version of the source")
     learn.add_argument("video")
     learn.add_argument("reference")
-    learn.add_argument("--profile", required=True, choices=["rec709"])
+    learn.add_argument("--profile", default="auto", choices=["auto", "rec709"])
     learn.add_argument("--project", required=True)
+    learn.add_argument("--rotation", choices=["auto", "0", "90", "180", "270"], default="auto")
     advice = commands.add_parser("advise", help="Opt in to cloud advice using three proxy frames")
     advice.add_argument("project")
     advice.add_argument("--provider", required=True, choices=["openai", "anthropic"])
@@ -62,6 +63,8 @@ def parser():
     for command in (analysis, batch):
         command.add_argument("--auto-method", choices=["ai", "adaptive", "legacy"], default="ai")
     for command in (analysis, export, batch):
+        command.add_argument("--rotation", choices=["auto", "0", "90", "180", "270"],
+                             help="Additional clockwise quarter-turn correction; auto uses metadata/local AI")
         command.add_argument("--stabilize", action="store_true", default=None,
                              help="Stabilize the export with robust background tracking")
         command.add_argument("--denoise", type=float, default=None, metavar="0–10",
@@ -93,6 +96,8 @@ def main(argv=None):
         print(f"{fraction:6.1%}  {message}", file=sys.stderr)
 
     def finishing(grade):
+        if args.rotation is not None:
+            grade.rotation = args.rotation
         if args.stabilize is not None:
             grade.stabilize = args.stabilize
         if args.denoise is not None:
@@ -117,11 +122,19 @@ def main(argv=None):
         elif args.command == "analyze":
             info = probe(args.video, cancel)
             grade = load_preset(args.preset) if args.preset else Grade()
-            grade.input_profile, grade.output_profile, grade.filter_hint = args.profile, args.output_profile, args.filter
+            if args.profile != "auto" or not args.preset:
+                grade.input_profile = args.profile
+            if grade.input_profile == "auto":
+                grade.input_profile = info.profile
+            if grade.input_profile == "auto":
+                raise UWCCError(info.profile_evidence + " Pass --profile with the recording profile.")
+            grade.output_profile, grade.filter_hint = args.output_profile, args.filter
             grade.model_manifest = args.model
             grade.auto_method = args.auto_method
             finishing(grade)
             project = Project(info.path, grade, fingerprint(Path(info.path)))
+            from .orientation import project_info
+            info = project_info(project, info, cancel, progress)
             project.analysis = analyze(info, grade, cancel, progress)
             project.save(args.project)
             print(f"Saved {args.project}")
@@ -133,7 +146,8 @@ def main(argv=None):
             render(project, args.output, args.format, cancel, progress, args.overwrite, workers=args.workers)
         elif args.command == "batch":
             grade = load_preset(args.preset) if args.preset else Grade()
-            grade.input_profile = args.profile
+            if args.profile != "auto" or not args.preset:
+                grade.input_profile = args.profile
             grade.auto_method = args.auto_method
             finishing(grade)
             queue = BatchQueue(args.queue or Path(args.output_dir)/"uwcc-queue.json")
@@ -151,7 +165,12 @@ def main(argv=None):
             if Path(args.project).resolve() == Path(args.reference).resolve():
                 raise UWCCError("A project cannot overwrite the corrected reference video.")
             info = probe(args.video, cancel)
-            project = Project(info.path, Grade(input_profile=args.profile), fingerprint(Path(info.path)))
+            profile = info.profile if args.profile == "auto" else args.profile
+            if profile != "rec709":
+                raise UWCCError("Reference learning requires Rec.709 input. " + info.profile_evidence)
+            project = Project(info.path, Grade(input_profile=profile, rotation=args.rotation), fingerprint(Path(info.path)))
+            from .orientation import project_info
+            info = project_info(project, info, cancel, progress)
             project.analysis = learn_reference(info, project.grade, args.reference, cancel, progress)
             project.save(args.project)
             print(f"Learned reference grade; mean RGB error {project.analysis['reference_mae']:.4f}. Saved {args.project}")
@@ -169,7 +188,7 @@ def main(argv=None):
             from .neural import builtin_model
             from .project import model_directory
             print("Model directory:", model_directory())
-            for task in ("enhance", "denoise"):
+            for task in ("enhance", "denoise", "orientation"):
                 manifest = builtin_model(task)
                 print(f"{task}: {manifest or 'not installed'}")
             print("ONNX Runtime:", bool(importlib.util.find_spec("onnxruntime")))

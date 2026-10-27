@@ -80,6 +80,8 @@ class MediaInfo:
     color_range: str = "unknown"
     audio_codecs: list = field(default_factory=list)
     audio_offsets: list = field(default_factory=list)
+    correction_rotation: int = 0
+    profile_evidence: str = ""
 
 
 def probe(path, cancel=None):
@@ -100,9 +102,8 @@ def probe(path, cancel=None):
         if rotation in (90, 270):
             width, height = height, width
         trc, primaries = video.get("color_transfer", "unknown"), video.get("color_primaries", "unknown")
-        profile = {"arib-std-b67": "hlg", "smpte2084": "pq"}.get(trc, "auto")
-        if trc == "bt709" and primaries == "bt709":
-            profile = "rec709"
+        from .profiles import detect_profile
+        profile, evidence = detect_profile(source, trc, primaries)
         if duration <= 0 or not math.isfinite(duration) or width*height > 100_000_000:
             raise ValueError("unsupported duration or dimensions")
         return MediaInfo(str(source), width, height, duration, fps, int(video["index"]),
@@ -110,7 +111,8 @@ def probe(path, cancel=None):
                          float(video.get("start_time", 0)), float(data.get("format", {}).get("start_time", 0)),
                          video.get("sample_aspect_ratio", "1:1"), primaries, trc, video.get("color_range", "unknown"),
                          [s.get("codec_name", "") for s in streams if s["codec_type"] == "audio"],
-                         [float(s.get("start_time", 0))-float(video.get("start_time", 0)) for s in streams if s["codec_type"] == "audio"])
+                         [float(s.get("start_time", 0))-float(video.get("start_time", 0)) for s in streams if s["codec_type"] == "audio"],
+                         profile_evidence=evidence)
     except (ValueError, KeyError, StopIteration, ZeroDivisionError) as exc:
         raise UWCCError(f"No supported, finite-duration video stream: {exc}") from exc
 
@@ -145,6 +147,7 @@ class FrameReader:
                 if progress:
                     progress(f"AI denoise backend: {self.denoiser.network.execution_label}")
         self.closed = threading.Event()
+        self.frames = self.denoise_frames = None
         self.errors = tempfile.TemporaryFile()
         threads = cpu_threads()
         args = [executable("ffmpeg"), "-nostdin", "-v", "error", "-threads", str(threads),
@@ -153,6 +156,11 @@ class FrameReader:
             args += ["-ss", str(max(0, start))]
         args += ["-i", info.path, "-map", f"0:{info.video_index}", "-an", "-sn", "-dn"]
         filters = []
+        rotation = getattr(info, "correction_rotation", 0)
+        if rotation in (90, 270):
+            filters.append("transpose=clock" if rotation == 90 else "transpose=cclock")
+        elif rotation == 180:
+            filters += ["hflip", "vflip"]
         # Apply before scaling and RGB conversion, in the source YUV domain.
         # These streaming native filters preserve frame count and timestamps.
         if finishing is not None:
@@ -179,12 +187,15 @@ class FrameReader:
                 return
 
     def __iter__(self):
+        if self.frames is not None:
+            return self.frames
         frames = self._decoded()
         if self.denoiser:
-            frames = self.denoiser.stream(frames)
+            frames = self.denoise_frames = self.denoiser.stream(frames, on_stop=self._stop_decode)
         if self.stabilizer:
             frames = self.stabilizer.warp(frames)
-        return iter(frames)
+        self.frames = iter(frames)
+        return self.frames
 
     def _decoded(self):
         nbytes = self.width*self.height*6
@@ -209,10 +220,20 @@ class FrameReader:
                 raise UWCCError("Decoder returned an incomplete video frame.")
             yield np.frombuffer(raw, dtype="<u2").reshape(self.height, self.width, 3).astype(np.float32)/65535
 
-    def close(self):
-        self.closed.set()
+    def _stop_decode(self):
         if self.process.poll() is None:
             self.process.kill()
+
+    def close(self):
+        if self.closed.is_set():
+            return
+        self.closed.set()
+        # Unblock the preparation worker before joining it or closing its pipe.
+        self._stop_decode()
+        if self.frames is not None:
+            self.frames.close()
+        if self.denoise_frames is not None:
+            self.denoise_frames.close()
         self.process.wait()
         self.process.stdout.close()
         self.watcher.join(timeout=1)

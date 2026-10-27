@@ -103,6 +103,8 @@ def advise_project(project, provider, model, preference="Natural, balanced, vivi
     from .media import probe, read_frame, prepare_frame
     from .color import correct
     info = probe(project.source, cancel)
+    from .orientation import project_info
+    info = project_info(project, info, cancel, progress)
     grade = clone(project.grade)
     grade.values, grade.keyframes = defaults(), {}
     if grade.input_profile == "auto":

@@ -21,6 +21,7 @@ from .project import (BUILTINS, CONTROLS, FILTERS, OUTPUTS, PROFILES, Grade, Pro
                       clone, fingerprint, load_preset, save_preset, user_directory)
 from .qt import QtCore as C, QtGui as G, QtWidgets as W, Signal, multimedia
 from .render import RENDER_PROFILES, render
+from .orientation import ROTATIONS, oriented_info, project_info
 
 
 class Worker(C.QThread):
@@ -196,6 +197,11 @@ class BatchDialog(W.QDialog):
         self.queue = BatchQueue(user_directory()/"queue.json")
         layout = W.QVBoxLayout(self)
         layout.addWidget(W.QLabel("Each clip is analyzed independently using the current settings. Failed items can be retried."))
+        layout.addWidget(W.QLabel("Input color profile for new items"))
+        self.input_profile = W.QComboBox()
+        for value, label in PROFILES.items():
+            self.input_profile.addItem(label, value)
+        layout.addWidget(self.input_profile)
         self.table = W.QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Source", "Output", "State", "Details"])
         self.table.horizontalHeader().setSectionResizeMode(W.QHeaderView.ResizeMode.Stretch)
@@ -237,6 +243,7 @@ class BatchDialog(W.QDialog):
         if not folder:
             return
         grade = clone(self.window.project.grade) if self.window.project else Grade()
+        grade.input_profile = self.input_profile.currentData()
         grade.keyframes.clear()
         for path in paths:
             self.queue.add(path, folder, grade, self.window.export_profile.currentData())
@@ -380,6 +387,15 @@ class MainWindow(W.QMainWindow):
         form.addWidget(self.source_label)
         self.input_profile = self.combo(form, "Input color profile", PROFILES)
         self.input_profile.currentIndexChanged.connect(self.profile_changed)
+        self.profile_label = W.QLabel()
+        self.profile_label.setWordWrap(True)
+        form.addWidget(self.profile_label)
+        self.rotation = self.combo(form, "Video rotation", ROTATIONS)
+        self.rotation.setToolTip("Additional correction after file metadata. Auto uses a local model when available; uncertain clips stay unchanged.")
+        self.rotation.currentIndexChanged.connect(self.rotation_changed)
+        self.orientation_label = W.QLabel()
+        self.orientation_label.setWordWrap(True)
+        form.addWidget(self.orientation_label)
         self.filter_hint = self.combo(form, "Capture filter", FILTERS)
         self.filter_hint.currentIndexChanged.connect(self.profile_changed)
         self.output_profile = self.combo(form, "Output color intent", OUTPUTS)
@@ -562,6 +578,7 @@ class MainWindow(W.QMainWindow):
         self.denoise.setEnabled(ready)
         self.ai_denoise.setEnabled(ready)
         self.auto_method.setEnabled(ready)
+        self.rotation.setEnabled(ready and not busy)
         self.stabilization_region.setEnabled(ready)
         self.load_preset_button.setEnabled(not busy)
         self.save_preset_button.setEnabled(ready and not busy)
@@ -604,7 +621,7 @@ class MainWindow(W.QMainWindow):
             if grade.input_profile == "auto":
                 grade.input_profile = info.profile
             project = Project(info.path, grade, fingerprint(Path(info.path)))
-            return info, project
+            return project_info(project, info, cancel, progress), project
         self.task(operation, self.opened)
 
     def opened(self, pair):
@@ -642,7 +659,8 @@ class MainWindow(W.QMainWindow):
         self.stop_playback()
         def operation(cancel, progress):
             project = Project.load(path)
-            return probe(project.source, cancel), project
+            info = probe(project.source, cancel)
+            return project_info(project, info, cancel, progress), project
         self.task(operation, self.opened)
 
     def save_project(self):
@@ -680,7 +698,7 @@ class MainWindow(W.QMainWindow):
 
     def remember(self):
         if self.project:
-            self.history.append((clone(self.project.grade), self.project.analysis))
+            self.history.append((clone(self.project.grade), self.project.analysis, clone(self.project.orientation)))
             self.history = self.history[-100:]
             self.future.clear()
 
@@ -696,16 +714,16 @@ class MainWindow(W.QMainWindow):
     def undo(self):
         if self.history:
             self.stop_playback()
-            self.future.append((clone(self.project.grade), self.project.analysis))
-            self.project.grade, self.project.analysis = self.history.pop()
+            self.future.append((clone(self.project.grade), self.project.analysis, clone(self.project.orientation)))
+            self.project.grade, self.project.analysis, self.project.orientation = self.history.pop()
             self.sync_controls()
             self.changed()
 
     def redo(self):
         if self.future:
             self.stop_playback()
-            self.history.append((clone(self.project.grade), self.project.analysis))
-            self.project.grade, self.project.analysis = self.future.pop()
+            self.history.append((clone(self.project.grade), self.project.analysis, clone(self.project.orientation)))
+            self.project.grade, self.project.analysis, self.project.orientation = self.future.pop()
             self.sync_controls()
             self.changed()
 
@@ -713,6 +731,10 @@ class MainWindow(W.QMainWindow):
         if not self.project:
             return
         grade = self.project.grade
+        self.rotation.blockSignals(True)
+        self.rotation.setCurrentIndex(self.rotation.findData(grade.rotation))
+        self.rotation.blockSignals(False)
+        self.sync_orientation()
         for combo, value in ((self.auto_method, grade.auto_method), (self.stabilization_region, grade.stabilization_region)):
             combo.blockSignals(True)
             combo.setCurrentIndex(combo.findData(value))
@@ -731,6 +753,7 @@ class MainWindow(W.QMainWindow):
             combo.blockSignals(True)
             combo.setCurrentIndex(combo.findData(value))
             combo.blockSignals(False)
+        self.update_profile_evidence()
         values = grade.at(self.position)
         for name, (spin, slider, key) in self.controls.items():
             spin.blockSignals(True)
@@ -747,6 +770,44 @@ class MainWindow(W.QMainWindow):
                 seconds = float(Fraction(item["time"]))
                 self.key_list.addItem(f"{self.timestamp(seconds)}  {CONTROLS[name][0]} = {item['value']:g}", (name, item["time"]))
         self.update_engine()
+
+    def sync_orientation(self):
+        choice = self.project.grade.rotation
+        decision = self.project.orientation
+        correction = int(choice) if choice != "auto" else (decision or {}).get("correction_cw", 0)
+        self.info = oriented_info(self.info, correction)
+        self.source_label.setText(f"{Path(self.info.path).name}\n{self.info.width} × {self.info.height} · {float(self.info.fps):.3f} fps · {self.info.duration:.1f}s")
+        try:
+            self.viewer.sar = float(Fraction(self.info.sar.replace(":", "/"))) if self.info.sar not in ("N/A", "0:1") else 1
+        except (ValueError, ZeroDivisionError):
+            self.viewer.sar = 1
+        self.orientation_label.setText("Manual rotation: "+ROTATIONS[choice] if choice != "auto" else
+                                       (decision or {}).get("message", "Automatic orientation pending."))
+
+    def rotation_changed(self):
+        if self.project:
+            self.stop_playback()
+            self.remember()
+            self.project.grade.rotation = self.rotation.currentData()
+            self.project.analysis = None
+            refresh = self.project.grade.rotation == "auto" and (
+                self.project.orientation is None or self.project.orientation["status"] in ("legacy", "unavailable"))
+            if refresh:
+                self.project.orientation = None
+            self.sync_orientation()
+            self.update_engine()
+            self.changed()
+            if refresh:
+                snapshot, info, project = clone(self.project), self.info, self.project
+                def operation(cancel, progress):
+                    result = project_info(snapshot, info, cancel, progress)
+                    return result, snapshot.orientation
+                def complete(result):
+                    if self.project is project and self.project.grade.rotation == "auto":
+                        self.info, self.project.orientation = result
+                        self.sync_orientation()
+                        self.changed()
+                self.task(operation, complete)
 
     def update_engine(self):
         if self.project and self.project.analysis:
@@ -778,12 +839,23 @@ class MainWindow(W.QMainWindow):
         slider.blockSignals(False)
         self.changed()
 
+    def update_profile_evidence(self):
+        if self.info and self.project:
+            prefix = "Selected profile differs from detected metadata. " if self.project.grade.input_profile not in ("auto", self.info.profile) else ""
+            self.profile_label.setText(prefix + self.info.profile_evidence)
+
     def profile_changed(self):
         if not self.project:
             return
         self.stop_playback()
         self.remember()
         self.project.grade.input_profile = self.input_profile.currentData()
+        if self.project.grade.input_profile == "auto" and self.info.profile != "auto":
+            self.project.grade.input_profile = self.info.profile
+            self.input_profile.blockSignals(True)
+            self.input_profile.setCurrentIndex(self.input_profile.findData(self.info.profile))
+            self.input_profile.blockSignals(False)
+        self.update_profile_evidence()
         self.project.grade.filter_hint = self.filter_hint.currentData()
         self.project.analysis = None
         self.update_engine()
@@ -953,6 +1025,7 @@ class MainWindow(W.QMainWindow):
                 or self.project.grade.input_profile != snapshot.grade.input_profile
                 or self.project.grade.filter_hint != snapshot.grade.filter_hint
                 or self.project.grade.auto_method != snapshot.grade.auto_method
+                or self.project.grade.rotation != snapshot.grade.rotation
                 or self.project.grade.model_manifest != snapshot.grade.model_manifest):
                 return
             self.project.analysis = result
@@ -1167,14 +1240,25 @@ class MainWindow(W.QMainWindow):
             self.open_video(path=urls[0].toLocalFile())
 
     def about(self):
-        W.QMessageBox.information(self, "About UWCC", f"UWCC {__version__} · GPL-3.0-or-later\n\n"
-            "Maintainer: Oliver Schwaneberg\n"
-            "Heavily developed using AI assistance from OpenAI Codex.\n\n"
-            "Local underwater color correction.\nClassical adaptive engine included; optional local ONNX model.\n"
-            "Shared float32 CPU correction for preview and render.\n\n"
-            "Current limitations: no bundled ML weights;\n"
-            "CPU rendering; SDR preview for HDR media; no certified HDR monitor path.\n"
-            "See docs/implementation-status.md for specification coverage.")
+        dialog = W.QMessageBox(self)
+        dialog.setWindowTitle("About UWCC")
+        dialog.setIcon(W.QMessageBox.Icon.Information)
+        dialog.setTextFormat(C.Qt.TextFormat.RichText)
+        dialog.setTextInteractionFlags(C.Qt.TextInteractionFlag.TextBrowserInteraction)
+        dialog.setText(f"<p>UWCC {__version__} · GPL-3.0-or-later</p>"
+            "<p>Maintainer: Oliver Schwaneberg<br>"
+            "Heavily developed using AI assistance from OpenAI Codex.</p>"
+            '<p>GitHub: <a href="https://github.com/Schwaneberg/UnderwaterColorCorrection">'
+            "Schwaneberg/UnderwaterColorCorrection</a></p>"
+            '<p>Optional orientation model: <a href="https://cheqit.ortusai.io/resources/rightwayup/">'
+            "RightWayUp by ORTUS AI</a> (Apache-2.0).</p>"
+            "<p>Local underwater color correction.<br>Classical adaptive engine included; optional local ONNX model.<br>"
+            "Shared float32 CPU correction for preview and render.</p>"
+            "<p>Current limitations: no bundled ML weights;<br>"
+            "CPU rendering; SDR preview for HDR media; no certified HDR monitor path.<br>"
+            "See docs/implementation-status.md for specification coverage.</p>")
+        dialog.setStandardButtons(W.QMessageBox.StandardButton.Ok)
+        dialog.exec()
 
     def closeEvent(self, event):
         if not self.confirm_discard():

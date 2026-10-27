@@ -7,7 +7,8 @@ from uwcc import model_setup
 
 @pytest.mark.parametrize("command,script", [("prepare", "prepare_models.py"),
                                            ("prepare-gpu", "prepare_gpu_denoise.py"),
-                                           ("validate-gpu", "validate_gpu_denoise.py")])
+                                           ("validate-gpu", "validate_gpu_denoise.py"),
+                                           ("prepare-orientation", "prepare_orientation_model.py")])
 def test_installed_model_commands_use_selected_storage_and_interpreter(tmp_path, monkeypatch, command, script):
     (tmp_path/script).touch()
     monkeypatch.setattr(model_setup, "tool_directory", lambda: tmp_path)

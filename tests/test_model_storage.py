@@ -14,7 +14,7 @@ def test_default_models_use_user_data_without_creating_directories(tmp_path, mon
     assert not (tmp_path/"data").exists()
 
 
-@pytest.mark.parametrize("task,folder", [("enhance", "udnet"), ("denoise", "fastdvdnet")])
+@pytest.mark.parametrize("task,folder", [("enhance", "udnet"), ("denoise", "fastdvdnet"), ("orientation", "rightwayup")])
 def test_user_models_take_precedence_over_checkout(task, folder, tmp_path, monkeypatch):
     monkeypatch.delenv("UWCC_MODEL_DIR", raising=False)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path/"data"))

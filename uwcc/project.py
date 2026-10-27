@@ -30,7 +30,7 @@ CONTROLS = {
     "sharpness": ("Sharpness", 0, 100, 0, 1),
 }
 PROFILES = {
-    "auto": "Confirm input profile…",
+    "auto": "Auto-detect input profile",
     "rec709": "Rec.709 / standard gamma",
     "slog2": "Sony S-Log2 / S-Gamut",
     "slog3": "Sony S-Log3 / S-Gamut3.Cine",
@@ -138,6 +138,7 @@ class Grade:
     denoise_manifest: str | None = None
     stabilization_region: str = "seabed"
     denoise_engine: str = "classical"
+    rotation: str = "auto"
 
     def at(self, seconds: float) -> dict:
         result = dict(self.values)
@@ -169,6 +170,9 @@ class Grade:
     @classmethod
     def from_dict(cls, data):
         grade = cls()
+        grade.rotation = data.get("rotation", "auto")
+        if grade.rotation not in ("auto", "0", "90", "180", "270"):
+            raise UWCCError("Unknown video rotation.")
         grade.auto_method = data.get("auto_method", "adaptive")
         if grade.auto_method not in ("ai", "adaptive", "legacy"):
             raise UWCCError("Unknown automatic correction method.")
@@ -220,6 +224,7 @@ class Project:
     source_fingerprint: dict = field(default_factory=dict)
     analysis: dict | None = None
     path: Path | None = None
+    orientation: dict | None = None
 
     def to_dict(self, relative_to=None):
         source = self.source
@@ -230,7 +235,7 @@ class Project:
                 pass
         return {"schema_version": 1, "application_version": "0.1.0", "source": source,
                 "source_fingerprint": self.source_fingerprint,
-                "grade": self.grade.to_dict(), "analysis": self.analysis}
+                "grade": self.grade.to_dict(), "analysis": self.analysis, "orientation": self.orientation}
 
     def save(self, path):
         path = Path(path).resolve()
@@ -258,7 +263,12 @@ class Project:
         analysis = data.get("analysis") if actual == data.get("source_fingerprint") else None
         if analysis is not None:
             validate_analysis(analysis)
-        return cls(str(source), Grade.from_dict(data["grade"]), actual, analysis, path)
+        from .orientation import validate_decision
+        orientation = data.get("orientation") if actual == data.get("source_fingerprint") else None
+        if "orientation" not in data and not replacement:
+            orientation = {"correction_cw": 0, "status": "legacy",
+                           "message": "Saved project orientation retained. Manual rotation is available."}
+        return cls(str(source), Grade.from_dict(data["grade"]), actual, analysis, path, validate_decision(orientation))
 
 
 BUILTINS = {

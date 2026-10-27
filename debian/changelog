@@ -1,3 +1,34 @@
+uwcc (0.1.0-1~ppa6) resolute; urgency=medium
+
+  * Detect supported input gamma/gamut metadata by default in GUI and CLI.
+  * Recognize xvYCC/BT.709 stream tags and explicit Sony capture declarations.
+  * Show detection evidence and retain manual profile overrides.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Tue, 27 Oct 2026 17:00:00 +0100
+
+uwcc (0.1.0-1~ppa5) resolute; urgency=medium
+
+  * Add optional ten-sample local video orientation detection with abstention.
+  * Add manual quarter-turn controls across GUI, CLI, presets, and exports.
+  * Download checksum-pinned RightWayUp weights from upstream through model tools.
+  * Preserve saved orientation and include underwater evaluation results.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Tue, 27 Oct 2026 16:00:00 +0100
+
+uwcc (0.1.0-1~ppa4) resolute; urgency=medium
+
+  * Add a clickable project GitHub link to the About dialog.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Tue, 27 Oct 2026 14:00:00 +0100
+
+uwcc (0.1.0-1~ppa3) resolute; urgency=medium
+
+  * Overlap neural denoise input preparation with sequential inference.
+  * Bound prefetch to one window and join workers during decoder shutdown.
+  * Reduce full-frame tensor copies and add a reproducible pipeline benchmark.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Tue, 27 Oct 2026 12:00:00 +0100
+
 uwcc (0.1.0-1~ppa2) resolute; urgency=medium
 
   * Credit Oliver Schwaneberg as maintainer in the About dialog.

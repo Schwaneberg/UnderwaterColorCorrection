@@ -18,7 +18,7 @@ def builtin_model(task):
     if not os.environ.get("UWCC_MODEL_DIR") and (checkout/"pyproject.toml").is_file():
         roots.append(checkout/"models")
     for root in roots:
-        path = root/("udnet" if task == "enhance" else "fastdvdnet")/"manifest.json"
+        path = root/{"enhance": "udnet", "denoise": "fastdvdnet", "orientation": "rightwayup"}[task]/"manifest.json"
         if path.is_file():
             return str(path)
     return None

@@ -6,6 +6,13 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
+@pytest.fixture(autouse=True)
+def isolate_optional_orientation_weights(monkeypatch):
+    # Unit tests must not depend on a developer's downloaded 300 MiB model.
+    from uwcc import orientation
+    monkeypatch.setattr(orientation, "builtin_model", lambda task: None)
+
+
 @pytest.fixture
 def clip(tmp_path):
     source = tmp_path / "blue water ü test.mp4"

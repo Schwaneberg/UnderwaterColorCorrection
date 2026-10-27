@@ -3,7 +3,7 @@
 uwcc-models \- download and prepare local UWCC models
 .SH SYNOPSIS
 .B uwcc-models
-.RI { prepare | prepare-gpu | validate-gpu }
+.RI { prepare | prepare-gpu | validate-gpu | prepare-orientation }
 .RI [ --models-dir " DIRECTORY" ]
 .RI [ --download-only ]
 .SH DESCRIPTION
@@ -22,6 +22,12 @@ Prepare dynamic FP32/FP16 FastDVDnet graphs from previously downloaded weights.
 .B validate-gpu
 Validate and register the GPU variants. Requires an active CUDA runtime;
 use uwcc-nvidia model-tools validate-gpu after NVIDIA setup.
+.TP
+.B prepare-orientation
+Download the pinned RightWayUp Max INT8 orientation model and upstream notices.
+This is a prebuilt ONNX model and needs no local conversion. Automatic detection
+uses ten samples and leaves uncertain clips unchanged. Manual rotation is always
+available in the GUI and through --rotation on video-processing commands.
 .SH OPTIONS
 .TP
 .B --models-dir DIRECTORY

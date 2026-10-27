@@ -1,0 +1,8 @@
+{
+  "repo": "ortusai/rightwayup",
+  "revision": "69076d99f16fafbc3d7e12958390972b5f291e81",
+  "license": "Apache-2.0",
+  "files": {
+    "max-l280-int8.onnx": "9e358f9c51587ec4472ac9496e52dbcaa428886613ebe338fb0654b10bdc3ccf"
+  }
+}

@@ -10,13 +10,17 @@ specifications remain the v1 target; this file records actual implementation.
   User model storage follows XDG data paths; source-checkout models still work.
 - Optional `uwcc-model-tools` package for CPU model download/conversion, and
   `uwcc-nvidia` for explicit user-owned CUDA runtime installation and launch.
+- Optional RightWayUp Max INT8 orientation detection over ten video samples,
+  conservative quarter-turn consensus, visible uncertainty, saved decisions,
+  and manual GUI/CLI/preset rotation with matching preview/export geometry.
 
 - Qt desktop workspace with split/original/corrected comparison, draggable split,
   proxy zoom/panning, timeline seeking, and background proxy playback.
 - Preview-resolution histogram, waveform, RGB parade, and vectorscope.
 - Twelve manual controls, per-control reset, linear keyframes, keyframe jump and
   deletion, and undo/redo.
-- Source probing, explicit profile confirmation, capture-filter hints, and
+- Source probing, default gamma/gamut detection from stream tags or embedded
+  Sony capture XML, visible evidence, manual overrides, capture-filter hints, and
   Rec.709, S-Log2/S-Gamut, S-Log3/S-Gamut3.Cine, HLG, and PQ transforms.
 - Float32 ACEScg working values, 16-bit FFmpeg frame transport, a shared CPU
   preview/render graph, SDR tone mapping, and 10-bit HDR export signaling.
@@ -54,6 +58,9 @@ specifications remain the v1 target; this file records actual implementation.
   validated proposals; provider contracts tested with mocks, no live API run.
 - Bounded parallel color processing and multithreaded FFmpeg decode/filter/
   encode/timing scans, preserving temporal ordering and cancellation.
+- One-window neural-denoise prefetch overlaps decoding, transfer conversion,
+  and full-frame GPU tensor packing with sequential inference; measured about
+  17% lower elapsed decode/denoise time on a short 1080p C0201 CUDA test.
 
 ## Remaining before v1
 

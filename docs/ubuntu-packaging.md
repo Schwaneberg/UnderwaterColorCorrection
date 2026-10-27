@@ -88,6 +88,14 @@ then converts and validates models locally. It runs without sudo using Ubuntu's
 CPU PyTorch, ONNX, OpenCV, and ONNX Runtime packages. `--download-only` fetches
 files without converting. Model-tool help is available with `uwcc-models --help`.
 
+For optional video orientation detection, run `uwcc-models prepare-orientation`.
+It downloads the pinned, prebuilt RightWayUp Max INT8 model (about 297 MiB) into
+the `rightwayup/` model subdirectory; no conversion or CUDA runtime is required.
+The GUI provides Auto and manual quarter-turn controls; CLI video commands
+accept `--rotation auto|0|90|180|270`. An uncertain detection leaves pixels
+unrotated and presents a manual suggestion. See the
+[orientation evaluation](benchmarks/orientation.md).
+
 Installed applications discover models in:
 
 ```text

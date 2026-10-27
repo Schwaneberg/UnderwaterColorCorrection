@@ -1,0 +1,64 @@
+RightWayUp
+Copyright 2026 ORTUS AI SOFTWARE LIMITED
+
+This product includes software and model weights developed by ORTUS AI.
+RightWayUp by ORTUS AI (https://cheqit.ortusai.io/resources/rightwayup/)
+
+The model weights are modified from DINOv2 (ViT-S/14 and ViT-L/14, without
+registers), Copyright (c) Meta Platforms, Inc. and affiliates, licensed under
+the Apache License 2.0 (https://github.com/facebookresearch/dinov2), obtained
+via timm (PyTorch Image Models), Copyright 2019 Ross Wightman, Apache-2.0.
+ORTUS AI fully fine-tuned all weights, added a new classification head,
+exported them to ONNX (FP32, FP16) and Core ML, and quantised them to INT8.
+
+Training images are not redistributed. Attribution: DATA-CARD.md, manifests/.
+  PASS (Asano et al., 2021), CC BY 4.0; images by their Flickr authors (YFCC100M)
+  COCO 2017 (train and unlabeled): images CC BY 2.0 or CC BY 4.0 by their
+    Flickr authors; a few images under public-domain-like terms (CC0, Public
+    Domain Mark, "no known copyright restrictions", US Government Work)
+  Open Images (Google; test subset and V7 train): images CC BY 2.0 or CC BY 4.0
+    by their Flickr authors, a few under public-domain-like terms
+  CommonCatalog CC-BY (common-canvas/commoncatalog-cc-by, CC BY 4.0 dataset
+    card): YFCC100M images licensed CC BY 2.0 by their Flickr authors
+  COCO annotations (c) COCO Consortium, CC BY 4.0; Open Images annotations
+    (c) Google LLC, CC BY 4.0. Used to select images; identifiers appear in
+    manifests/.
+  DIODE (Vasiljevic et al., 2019): Copyright (c) 2021 diode-dataset, MIT licence
+  "Multiview Extended Video with Activities" (MEVA) dataset by Kitware Inc. and
+    IARPA, CC BY 4.0, https://mevadata.org/ . Frames were extracted, cropped,
+    resized, rotated and degraded. No endorsement by Kitware, IARPA or the
+    U.S. Government is implied.
+  Poly Haven assets, CC0; renders by ORTUS AI
+
+Runtime dependency (not bundled in the weights):
+  ONNX Runtime, Copyright (c) Microsoft Corporation, MIT licence.
+
+Third-party code (GitHub repository only; not part of the model weights):
+  rotlab/core.py (largest_rotated_rect), the same function in the hash-bound
+  copy evaluation/code-final/rotlab/core.py, and the functions marked
+  "upstream" in benchmarks/woehrer-2026/reproduce_w_jpeg.py are adapted from
+  rotation_utils.py of maxwoe/image-rotation-angle-estimation
+  (https://github.com/maxwoe/image-rotation-angle-estimation, commit
+  e4e35610775fbb08f3f27641e8027d14b1498395), used under the MIT License:
+
+  MIT License
+
+  Copyright (c) 2026 Maximilian Woehrer, MAXI solutions e.U.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to
+  deal in the Software without restriction, including without limitation the
+  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+  sell copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+  IN THE SOFTWARE.

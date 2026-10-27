@@ -63,6 +63,23 @@ def test_automatic_analysis_waits_for_profile_and_refreshes_inputs(clip, automat
     assert not errors
 
 
+def test_open_video_detects_profile_and_allows_override(clip, automatic_window, monkeypatch):
+    import uwcc.gui as gui
+    window, wait_until, errors = automatic_window
+    monkeypatch.setattr(gui, "analyze", lambda *_: {"engine": "test", "shots": 1, "confidence": 1., "warnings": []})
+    window.open_video(path=str(clip))
+    wait_until(lambda: window.project is not None and window.project.analysis is not None and window.operation is None)
+    assert window.project.grade.input_profile == "rec709"
+    assert "Stream tags" in window.profile_label.text()
+    window.input_profile.setCurrentIndex(window.input_profile.findData("slog2"))
+    assert window.project.grade.input_profile == "slog2"
+    assert "differs" in window.profile_label.text()
+    window.input_profile.setCurrentIndex(window.input_profile.findData("auto"))
+    assert window.project.grade.input_profile == "rec709"
+    wait_until(lambda: window.project.analysis is not None and window.operation is None)
+    assert not errors
+
+
 def test_saved_analysis_is_preserved(clip, automatic_window, monkeypatch, tmp_path):
     import uwcc.gui as gui
     from uwcc.project import Grade, Project, fingerprint
@@ -81,6 +98,24 @@ def test_saved_analysis_is_preserved(clip, automatic_window, monkeypatch, tmp_pa
     assert not window.analysis_pending
     assert not window.dirty
     assert not errors
+
+
+def test_batch_defaults_to_per_clip_profile_detection(clip, automatic_window, monkeypatch, tmp_path):
+    from uwcc.gui import BatchDialog
+    from uwcc.project import Grade, Project
+    from uwcc.qt import QtWidgets as W
+    window, _, _ = automatic_window
+    window.project = Project(str(clip), Grade(input_profile="slog2"))
+    dialog = BatchDialog(window)
+    monkeypatch.setattr(W.QFileDialog, "getOpenFileNames", lambda *_: ([str(clip)], ""))
+    monkeypatch.setattr(W.QFileDialog, "getExistingDirectory", lambda *_: str(tmp_path))
+    dialog.add()
+    assert dialog.queue.jobs[-1]["grade"]["input_profile"] == "auto"
+    dialog.input_profile.setCurrentIndex(dialog.input_profile.findData("slog3"))
+    dialog.add()
+    assert dialog.queue.jobs[-1]["grade"]["input_profile"] == "slog3"
+    dialog.timer.stop()
+    dialog.close()
 
 
 def test_settings_changed_during_analysis_discard_stale_result(clip, automatic_window, monkeypatch):
@@ -135,6 +170,49 @@ def test_canceled_analysis_waits_for_retry(clip, automatic_window, monkeypatch):
     wait_until(lambda: window.project.analysis is not None and window.operation is None)
     assert len(calls) == 2
     assert errors == ["Operation canceled."]
+
+
+def test_rotation_control_updates_geometry_and_undo(clip, automatic_window, monkeypatch):
+    import uwcc.gui as gui
+    window, wait_until, errors = automatic_window
+    monkeypatch.setattr(gui, "analyze", lambda *_: {"engine": "test", "shots": 1, "confidence": 1., "warnings": []})
+    window.open_video(path=str(clip))
+    wait_until(lambda: window.project is not None and window.project.analysis is not None and window.operation is None)
+    original = (window.info.width, window.info.height)
+    window.rotation.setCurrentIndex(window.rotation.findData("90"))
+    assert (window.info.width, window.info.height) == original[::-1]
+    assert window.project.grade.rotation == "90"
+    assert "clockwise" in window.orientation_label.text()
+    assert window.project.analysis is None
+    window.undo()
+    assert (window.info.width, window.info.height) == original
+    assert window.rotation.currentData() == "auto"
+    assert not errors
+
+
+def test_orientation_redetection_can_be_undone_to_saved_geometry(clip, automatic_window, monkeypatch):
+    import uwcc.gui as gui
+    from uwcc.orientation import oriented_info
+    window, wait_until, errors = automatic_window
+    monkeypatch.setattr(gui, "analyze", lambda *_: {"engine": "test", "shots": 1, "confidence": 1., "warnings": []})
+    window.open_video(path=str(clip))
+    wait_until(lambda: window.project is not None and window.project.analysis is not None and window.operation is None)
+    window.project.orientation = {"status": "legacy", "correction_cw": 0, "message": "Original saved geometry"}
+    original = (window.info.width, window.info.height)
+    def detect(project, info, *args):
+        project.orientation = {"status": "detected", "correction_cw": 270, "message": "Detected"}
+        return oriented_info(info, 270)
+    monkeypatch.setattr(gui, "project_info", detect)
+    window.rotation.setCurrentIndex(window.rotation.findData("90"))
+    window.rotation.setCurrentIndex(window.rotation.findData("auto"))
+    wait_until(lambda: window.operation is None and window.project.orientation is not None)
+    assert window.project.orientation["status"] == "detected"
+    window.undo()
+    assert window.project.grade.rotation == "90"
+    window.undo()
+    assert window.project.orientation["status"] == "legacy"
+    assert (window.info.width, window.info.height) == original
+    assert not errors
 
 
 def test_window_open_preview_controls_and_analysis(clip, tmp_path, monkeypatch):

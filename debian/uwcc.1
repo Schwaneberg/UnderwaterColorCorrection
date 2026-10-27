@@ -24,13 +24,15 @@ Open the desktop workspace, optionally opening a video.
 Print video metadata.
 .TP
 .B analyze
-Analyze a video and save a project. An explicit input color profile is required.
+Analyze a video and save a project. The input color profile defaults to metadata
+detection. Use --profile to override; unknown metadata requires a manual choice.
 .TP
 .B render
 Render a saved project to a video file.
 .TP
 .B batch
-Analyze and render multiple videos.
+Analyze and render multiple videos, detecting the input color profile per clip
+unless --profile or a preset supplies an explicit profile.
 .TP
 .B relink
 Relink a project to a source video, discarding stale analysis.

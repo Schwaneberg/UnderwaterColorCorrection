@@ -1,9 +1,11 @@
 """Streaming background stabilization and optional five-frame neural denoising."""
 from collections import deque
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, wait
 import math
 import time
 import os
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -246,12 +248,12 @@ class TemporalDenoiser:
             mode = f" · {self.precision}" if self.gpu_variant else ""
             self.progress(f"AI denoise · {self.network.execution_label}{mode} · frame {self.frame_number} · tile {done}/{total}")
 
-    def predict(self, frames):
+    def predict(self, frames, prepared=None):
         if self.cancel and self.cancel.is_set():
             raise Cancelled("AI denoising canceled.")
         try:
             if self.gpu_variant and frames[2].shape[0]*frames[2].shape[1] <= 1920*1080:
-                return self.predict_full_frame(frames)
+                return self.predict_full_frame(frames, prepared)
             return self.predict_tiles(frames)
         except Cancelled:
             raise
@@ -266,15 +268,26 @@ class TemporalDenoiser:
             self.last_progress = -float("inf")
             return self.predict_tiles(frames)
 
-    def predict_full_frame(self, frames):
+    def prepare_full_frame(self, frames):
         height, width = frames[2].shape[:2]
         ph, pw = (-height) % 4, (-width) % 4
-        padded = [np.pad(f, ((0, ph), (0, pw), (0, 0)), mode="reflect") for f in frames]
-        batch = np.ascontiguousarray(np.concatenate([f.transpose(2, 0, 1) for f in padded], axis=0)[None], np.float32)
+        # Write directly into contiguous NCHW storage, avoiding five padded
+        # frame copies plus a second full-size concatenate/contiguous copy.
+        batch = np.empty((1, 15, height+ph, width+pw), np.float32)
+        for index, frame in enumerate(frames):
+            if ph or pw:
+                frame = np.pad(frame, ((0, ph), (0, pw), (0, 0)), mode="reflect")
+            batch[0, index*3:(index+1)*3] = frame.transpose(2, 0, 1)
         noise = np.full((1, 1, height+ph, width+pw), self.sigma, np.float32)
+        return {"frames": batch, "noise": noise}
+
+    def predict_full_frame(self, frames, prepared=None):
+        height, width = frames[2].shape[:2]
+        values = self.prepare_full_frame(frames) if prepared is None else prepared
+        shape = values["frames"].shape
         self.report(0, 1)
-        result = self.network.run({"frames": batch, "noise": noise})
-        if result.shape != (1, 3, height+ph, width+pw):
+        result = self.network.run(values)
+        if result.shape != (1, 3, shape[2], shape[3]):
             raise UWCCError("GPU denoise returned an invalid shape.")
         self.report(1, 1)
         return np.clip(result[0, :, :height, :width].transpose(1, 2, 0), 0, 1)
@@ -306,25 +319,93 @@ class TemporalDenoiser:
                 self.report(done, total)
         return np.clip(output, 0, 1)
 
-    def stream(self, frames):
-        from .color import bt709_decode, bt709_encode, srgb_decode, srgb_encode
+    def model_windows(self, frames):
+        from .color import bt709_decode, srgb_encode
         window = deque(maxlen=5)
         last = None
-        index = 0
         for frame in frames:
+            if self.cancel and self.cancel.is_set():
+                raise Cancelled("AI denoising canceled.")
             current = srgb_encode(bt709_decode(frame)).astype(np.float32)
             if last is None:
                 window.extend([current, current])
             window.append(current)
             last = current
             if len(window) == 5:
-                self.frame_number = index+1
-                yield bt709_encode(srgb_decode(self.predict(list(window)))).astype(np.float32)
-                index += 1
+                yield list(window)
         if last is not None:
             for _ in range(2):
                 window.append(last)
                 if len(window) == 5:
-                    self.frame_number = index+1
-                    yield bt709_encode(srgb_decode(self.predict(list(window)))).astype(np.float32)
-                    index += 1
+                    yield list(window)
+
+    def stream(self, frames, *, prefetch=None, on_stop=None):
+        """Prepare one future temporal window while the caller runs inference.
+
+        The source must be read only by the preparation worker. on_stop must
+        unblock a blocking source read (FrameReader kills its decoder), so
+        cancellation and early generator close can join the worker safely.
+        """
+        from .color import bt709_encode, srgb_decode
+        if prefetch is None:
+            prefetch = os.environ.get("UWCC_DENOISE_PREFETCH", "1") != "0"
+        windows = self.model_windows(frames)
+        stopped = threading.Event()
+
+        def prepare_next():
+            if stopped.is_set():
+                return None
+            if self.cancel and self.cancel.is_set():
+                raise Cancelled("AI denoising canceled.")
+            window = next(windows, None)
+            if window is None or stopped.is_set():
+                return None
+            prepared = None
+            if self.gpu_variant and window[2].shape[0]*window[2].shape[1] <= 1920*1080:
+                prepared = self.prepare_full_frame(window)
+            return window, prepared
+
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="uwcc-denoise-prepare") if prefetch else None
+        future = None
+        try:
+            if pool:
+                future = pool.submit(prepare_next)
+            index = 0
+            while True:
+                if self.cancel and self.cancel.is_set():
+                    raise Cancelled("AI denoising canceled.")
+                if pool:
+                    if not wait([future], timeout=.1).done:
+                        continue
+                    item = future.result()
+                else:
+                    item = prepare_next()
+                if item is None:
+                    break
+                if pool:
+                    # Only this next window may be prepared ahead of inference.
+                    future = pool.submit(prepare_next)
+                window, prepared = item
+                self.frame_number = index+1
+                result = self.predict(window) if prepared is None else self.predict(window, prepared=prepared)
+                # CPU fallback ignores prefetched GPU tensors but retains the
+                # exact same temporal windows and output ordering.
+                output = bt709_encode(srgb_decode(result)).astype(np.float32)
+                del item, window, prepared, result
+                yield output
+                index += 1
+                del output
+        finally:
+            stopped.set()
+            if future:
+                future.cancel()
+            try:
+                if on_stop:
+                    on_stop()
+            finally:
+                if pool:
+                    pool.shutdown(wait=True, cancel_futures=True)
+                windows.close()
+                close = getattr(frames, "close", None)
+                if close:
+                    close()

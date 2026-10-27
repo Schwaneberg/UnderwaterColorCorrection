@@ -91,6 +91,8 @@ def render(project, destination, profile="h264", cancel=None, progress=lambda *_
     if project.source_fingerprint and fingerprint(source) != project.source_fingerprint:
         raise UWCCError("Source changed after opening. Reopen and analyze it before exporting.")
     info = probe(source, cancel)
+    from .orientation import project_info
+    info = project_info(project, info, cancel, progress)
     workers = color_workers(info, workers)
     progress(0, "Validating frame timing…")
     times = list(frame_timestamps(info, cancel))

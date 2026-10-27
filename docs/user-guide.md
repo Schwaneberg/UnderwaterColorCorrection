@@ -35,10 +35,47 @@ inference on Linux is not currently supported by UWCC.
 
 ## First correction
 
+### Video orientation
+
+The **Video rotation** selector offers Auto, no additional rotation, 90°
+clockwise, 180°, and 90° counterclockwise. Rotation applies consistently to the
+preview, analysis, stabilization, denoise, and exported dimensions. Explicit
+choices are additional corrections after the file's standard rotation metadata.
+
+Auto honors file rotation metadata first. If none is present and the optional
+RightWayUp model is installed, opening a video samples ten evenly spaced
+frames. It applies one fixed quarter-turn only when predictions strongly agree;
+uncertain clips retain their orientation and show a suggested manual correction.
+The model runs locally on CPU, including when using the NVIDIA launcher.
+
+Install the optional model once with `uwcc-models prepare-orientation` (requires
+`uwcc-model-tools` and downloads about 297 MiB from upstream). No model is
+downloaded at application launch. Without it, manual rotation and ordinary
+metadata rotation work normally. See the [underwater evaluation](benchmarks/orientation.md)
+for the measured limits; featureless or changing-orientation clips may need
+manual selection.
+
+Detected results are saved per project, so reopening does not repeat detection
+or require the model. Older saved projects retain their previous orientation.
+To retry after installing a model, reopen the original video, or select a manual
+rotation and then return to Auto. Explicit manual rotation is included in presets.
+
+CLI examples (angles are clockwise):
+
+```bash
+uwcc batch videos/*.MP4 --profile rec709 --output-dir corrected --rotation auto
+uwcc analyze C0202.MP4 --profile rec709 --rotation 270 --project C0202.json
+uwcc render C0202.json corrected_C0202.mp4
+```
+
+### Color correction
+
 1. Choose **Open video** or drop a video on the workspace.
-2. Confirm the input profile. Select Rec.709 for standard footage or the exact
-   Sony log profile used in the camera. UWCC does not infer a Sony picture
-   profile from the camera model or filename.
+2. The input color profile is detected by default. The text below the selector
+   shows the metadata used. You can override it, or choose **Auto-detect input
+   profile** to return to the detected choice. Explicit Sony capture gamma and
+   gamut take precedence over generic stream tags. See
+   [profile detection](profile-detection.md) for supported pairs and limitations.
 3. Set the capture-filter hint if you used a red or magenta filter.
 4. Analysis starts automatically after opening the clip, or after choosing an
    input profile if the file's profile is ambiguous. The current engine,
@@ -128,6 +165,12 @@ Independent color frames run concurrently in a bounded worker pool; temporal
 stabilization and denoise run in order before that pool. Output frames are
 written in their original order.
 
+AI denoise prepares one future temporal window on a separate thread while
+inference runs. This overlaps decoding and input conversion without running
+multiple model sessions concurrently. It uses additional bounded CPU memory;
+set `UWCC_DENOISE_PREFETCH=0` for serial execution. See the
+[denoise pipeline benchmark](benchmarks/denoise-pipeline.md) for measurements.
+
 ```bash
 python3 -m uwcc render project.json output.mp4 --workers 3
 ```
@@ -157,8 +200,9 @@ animation and restores its neutral value. Ctrl+Z and Ctrl+Shift+Z undo and redo.
 
 Presets store settings and input/output intent, but exclude source paths,
 automatic curves, and manual animation. Batch items each receive their own
-automatic analysis. Choose the required input profile and export format before
-adding files to a batch. Pause stops the current item safely; resume restarts
+automatic analysis. Choose **Auto-detect input profile** to detect each batch
+item independently, or select the recording profile to override detection.
+Choose the export format before adding files. Pause stops the current item safely; resume restarts
 that item, leaving completed outputs alone.
 
 **Load preset…** opens a file chooser even before a video is open. In that case,
@@ -190,10 +234,10 @@ missing analysis after cancellation or an error.
 
 ```bash
 python3 -m uwcc probe dive.mp4
-python3 -m uwcc analyze dive.mp4 --profile rec709 --filter red --project dive.uwcc-project.json
+python3 -m uwcc analyze dive.mp4 --filter red --project dive.uwcc-project.json
 python3 -m uwcc render dive.uwcc-project.json dive_corrected.mp4 --format h264
 python3 -m uwcc render dive.uwcc-project.json dive_clean.mp4 --stabilize --denoise 3
-python3 -m uwcc batch dive1.mp4 dive2.mp4 --profile rec709 --output-dir corrected --format prores
+python3 -m uwcc batch dive1.mp4 dive2.mp4 --output-dir corrected --format prores
 ```
 
 Render formats are `h264`, `hevc`, `dnxhr`, `prores`, and `ffv1`. To render HDR,

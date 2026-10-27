@@ -16,14 +16,14 @@ def tool_directory():
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["prepare", "prepare-gpu", "validate-gpu"])
+    parser.add_argument("command", choices=["prepare", "prepare-gpu", "validate-gpu", "prepare-orientation"])
     parser.add_argument("--models-dir", type=Path, default=model_directory())
     parser.add_argument("--download-only", action="store_true", help="Download without converting (prepare only)")
     args = parser.parse_args(argv)
     if args.download_only and args.command != "prepare":
         parser.error("--download-only is only available with prepare")
     scripts = {"prepare": "prepare_models.py", "prepare-gpu": "prepare_gpu_denoise.py",
-               "validate-gpu": "validate_gpu_denoise.py"}
+               "validate-gpu": "validate_gpu_denoise.py", "prepare-orientation": "prepare_orientation_model.py"}
     script = tool_directory()/scripts[args.command]
     if not script.is_file():
         parser.exit(1, "Install uwcc-model-tools to use model preparation.\n")

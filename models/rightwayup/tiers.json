@@ -1,0 +1,502 @@
+{
+ "version": "1.0.0",
+ "input": {
+  "name": "image",
+  "dtype": "float32",
+  "layout": "NCHW",
+  "fill_rgb": [
+   124,
+   116,
+   104
+  ],
+  "mean": [
+   0.485,
+   0.456,
+   0.406
+  ],
+  "std": [
+   0.229,
+   0.224,
+   0.225
+  ],
+  "resize": "EXIF orientation applied, RGB, bicubic, keep aspect, centre on the fill colour"
+ },
+ "output": {
+  "name": "prob",
+  "shape": [
+   "batch",
+   360
+  ],
+  "meaning": "softmax over clockwise rotation, 1 degree per bin"
+ },
+ "decode": "argmax refined by the probability-weighted mean offset over +-10 bins; confidence = mass within +-10 degrees",
+ "cascade": "balanced/pro: run first_model; if confidence < route_below, run large_model at large_input_size and use its answer; abstain if the answering model's confidence < abstain_below (same file format for both stages)",
+ "formats": {
+  "fp32": "one-image ONNX FP32 (batch-fp32 = the batch files at FP32, same thresholds)",
+  "fp16": "ONNX FP16 (float32 I/O)",
+  "int8": "ONNX INT8 (dynamic quantisation)",
+  "batch-fp16": "batch-capable ONNX FP16",
+  "batch-int8": "batch-capable ONNX INT8",
+  "coreml": "Core ML FP16 packages",
+  "web-fp32": "Pico full-token ONNX for ONNX Runtime Web",
+  "web-int8": "Pico full-token ONNX INT8 for ONNX Runtime Web"
+ },
+ "tiers": {
+  "pico": {
+   "first_model": "pico-s70",
+   "input_size": 70,
+   "large_model": null,
+   "large_input_size": null,
+   "files": {
+    "one_image": [
+     "pico-s70-fp32.onnx",
+     "pico-s70-fp16.onnx",
+     "pico-s70-int8.onnx"
+    ],
+    "batch": [
+     "pico-s70-batch-fp32.onnx",
+     "pico-s70-batch-fp16.onnx",
+     "pico-s70-batch-int8.onnx"
+    ],
+    "coreml": [
+     "coreml/pico-s70-b1.mlpackage",
+     "coreml/pico-s70-b16.mlpackage"
+    ],
+    "web": [
+     "pico-s70-web-fp32.onnx",
+     "pico-s70-web-int8.onnx"
+    ]
+   },
+   "thresholds": {
+    "fp32": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.426,
+      "strict": 0.833
+     }
+    },
+    "fp16": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.425,
+      "strict": 0.833
+     }
+    },
+    "int8": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.415,
+      "strict": 0.833
+     }
+    },
+    "batch-fp16": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.425,
+      "strict": 0.833
+     }
+    },
+    "batch-int8": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.423,
+      "strict": 0.853
+     }
+    },
+    "batch-fp32": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.426,
+      "strict": 0.833
+     }
+    },
+    "coreml": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.423,
+      "strict": 0.838
+     }
+    },
+    "web-fp32": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.426,
+      "strict": 0.833
+     }
+    },
+    "web-int8": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.415,
+      "strict": 0.833
+     }
+    }
+   }
+  },
+  "nano": {
+   "first_model": "nano-s112",
+   "input_size": 112,
+   "large_model": null,
+   "large_input_size": null,
+   "files": {
+    "one_image": [
+     "nano-s112-fp32.onnx",
+     "nano-s112-fp16.onnx",
+     "nano-s112-int8.onnx"
+    ],
+    "batch": [
+     "nano-s112-batch-fp32.onnx",
+     "nano-s112-batch-fp16.onnx",
+     "nano-s112-batch-int8.onnx"
+    ],
+    "coreml": [
+     "coreml/nano-s112-b1.mlpackage",
+     "coreml/nano-s112-b16.mlpackage"
+    ]
+   },
+   "thresholds": {
+    "fp32": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.535,
+      "strict": 0.8
+     }
+    },
+    "fp16": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.535,
+      "strict": 0.8
+     }
+    },
+    "int8": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.536,
+      "strict": 0.8
+     }
+    },
+    "batch-fp16": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.535,
+      "strict": 0.8
+     }
+    },
+    "batch-int8": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.531,
+      "strict": 0.782
+     }
+    },
+    "batch-fp32": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.535,
+      "strict": 0.8
+     }
+    },
+    "coreml": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.534,
+      "strict": 0.8
+     }
+    }
+   }
+  },
+  "fast": {
+   "first_model": "fast-s224",
+   "input_size": 224,
+   "large_model": null,
+   "large_input_size": null,
+   "files": {
+    "one_image": [
+     "fast-s224-fp32.onnx",
+     "fast-s224-fp16.onnx",
+     "fast-s224-int8.onnx"
+    ],
+    "batch": [
+     "fast-s224-batch-fp32.onnx",
+     "fast-s224-batch-fp16.onnx",
+     "fast-s224-batch-int8.onnx"
+    ],
+    "coreml": [
+     "coreml/fast-s224-b1.mlpackage",
+     "coreml/fast-s224-b16.mlpackage"
+    ]
+   },
+   "thresholds": {
+    "fp32": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.629,
+      "strict": 0.738
+     }
+    },
+    "fp16": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.629,
+      "strict": 0.738
+     }
+    },
+    "int8": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.626,
+      "strict": 0.738
+     }
+    },
+    "batch-fp16": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.629,
+      "strict": 0.738
+     }
+    },
+    "batch-int8": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.623,
+      "strict": 0.738
+     }
+    },
+    "batch-fp32": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.629,
+      "strict": 0.738
+     }
+    },
+    "coreml": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.628,
+      "strict": 0.738
+     }
+    }
+   }
+  },
+  "balanced": {
+   "first_model": "fast-s224",
+   "input_size": 224,
+   "large_model": "max-l280",
+   "large_input_size": 280,
+   "files": {
+    "one_image": [
+     "fast-s224-fp32.onnx",
+     "fast-s224-fp16.onnx",
+     "fast-s224-int8.onnx"
+    ],
+    "batch": [
+     "fast-s224-batch-fp32.onnx",
+     "fast-s224-batch-fp16.onnx",
+     "fast-s224-batch-int8.onnx"
+    ],
+    "coreml": [
+     "coreml/fast-s224-b1.mlpackage",
+     "coreml/fast-s224-b16.mlpackage"
+    ]
+   },
+   "thresholds": {
+    "fp32": {
+     "route_below": 0.629,
+     "abstain_below": {
+      "standard": 0.691,
+      "strict": 0.743
+     }
+    },
+    "fp16": {
+     "route_below": 0.629,
+     "abstain_below": {
+      "standard": 0.691,
+      "strict": 0.745
+     }
+    },
+    "int8": {
+     "route_below": 0.626,
+     "abstain_below": {
+      "standard": 0.685,
+      "strict": 0.745
+     }
+    },
+    "batch-fp16": {
+     "route_below": 0.629,
+     "abstain_below": {
+      "standard": 0.691,
+      "strict": 0.743
+     }
+    },
+    "batch-int8": {
+     "route_below": 0.623,
+     "abstain_below": {
+      "standard": 0.684,
+      "strict": 0.745
+     }
+    },
+    "batch-fp32": {
+     "route_below": 0.629,
+     "abstain_below": {
+      "standard": 0.691,
+      "strict": 0.743
+     }
+    },
+    "coreml": {
+     "route_below": 0.628,
+     "abstain_below": {
+      "standard": 0.692,
+      "strict": 0.743
+     }
+    }
+   }
+  },
+  "pro": {
+   "first_model": "fast-s224",
+   "input_size": 224,
+   "large_model": "max-l280",
+   "large_input_size": 280,
+   "files": {
+    "one_image": [
+     "fast-s224-fp32.onnx",
+     "fast-s224-fp16.onnx",
+     "fast-s224-int8.onnx"
+    ],
+    "batch": [
+     "fast-s224-batch-fp32.onnx",
+     "fast-s224-batch-fp16.onnx",
+     "fast-s224-batch-int8.onnx"
+    ],
+    "coreml": [
+     "coreml/fast-s224-b1.mlpackage",
+     "coreml/fast-s224-b16.mlpackage"
+    ]
+   },
+   "thresholds": {
+    "fp32": {
+     "route_below": 0.8,
+     "abstain_below": {
+      "standard": 0.729,
+      "strict": 0.729
+     }
+    },
+    "fp16": {
+     "route_below": 0.8,
+     "abstain_below": {
+      "standard": 0.729,
+      "strict": 0.729
+     }
+    },
+    "int8": {
+     "route_below": 0.797,
+     "abstain_below": {
+      "standard": 0.714,
+      "strict": 0.714
+     }
+    },
+    "batch-fp16": {
+     "route_below": 0.8,
+     "abstain_below": {
+      "standard": 0.729,
+      "strict": 0.729
+     }
+    },
+    "batch-int8": {
+     "route_below": 0.793,
+     "abstain_below": {
+      "standard": 0.714,
+      "strict": 0.714
+     }
+    },
+    "batch-fp32": {
+     "route_below": 0.8,
+     "abstain_below": {
+      "standard": 0.729,
+      "strict": 0.729
+     }
+    },
+    "coreml": {
+     "route_below": 0.8,
+     "abstain_below": {
+      "standard": 0.729,
+      "strict": 0.729
+     }
+    }
+   }
+  },
+  "max": {
+   "first_model": "max-l280",
+   "input_size": 280,
+   "large_model": null,
+   "large_input_size": null,
+   "files": {
+    "one_image": [
+     "max-l280-fp32.onnx",
+     "max-l280-fp16.onnx",
+     "max-l280-int8.onnx"
+    ],
+    "batch": [
+     "max-l280-fp32.onnx",
+     "max-l280-fp16.onnx",
+     "max-l280-int8.onnx"
+    ],
+    "coreml": [
+     "coreml/max-l280-b1.mlpackage",
+     "coreml/max-l280-b16.mlpackage"
+    ]
+   },
+   "thresholds": {
+    "fp32": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.727,
+      "strict": 0.727
+     }
+    },
+    "fp16": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.727,
+      "strict": 0.727
+     }
+    },
+    "int8": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.711,
+      "strict": 0.711
+     }
+    },
+    "batch-fp16": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.727,
+      "strict": 0.727
+     }
+    },
+    "batch-int8": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.711,
+      "strict": 0.711
+     }
+    },
+    "batch-fp32": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.727,
+      "strict": 0.727
+     }
+    },
+    "coreml": {
+     "route_below": null,
+     "abstain_below": {
+      "standard": 0.727,
+      "strict": 0.727
+     }
+    }
+   }
+  }
+ }
+}

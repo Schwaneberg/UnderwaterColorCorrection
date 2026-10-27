@@ -61,10 +61,12 @@ class BatchQueue:
                 if grade.input_profile == "auto":
                     grade.input_profile = info.profile
                 if grade.input_profile == "auto":
-                    raise UWCCError("Input profile is ambiguous. Select a profile before adding this clip to the batch.")
+                    raise UWCCError("Input profile is ambiguous. " + info.profile_evidence + " Select an input profile for this clip.")
                 project = Project(info.path, grade, fingerprint(Path(info.path)))
                 job["state"] = "Analyzing"
                 self.save()
+                from .orientation import project_info
+                info = project_info(project, info, cancel, report)
                 project.analysis = analyze(info, grade, cancel, report)
                 job["state"] = "Rendering"
                 self.save()

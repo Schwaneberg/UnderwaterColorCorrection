@@ -7,6 +7,13 @@ background stabilization, and opt-in cloud grading advice.
 
 ## Run the installed local AI models
 
+For video orientation, `uwcc-models prepare-orientation` installs the optional
+RightWayUp Max INT8 model. Opening a clip then checks ten equally spaced frames
+and applies a quarter-turn only when predictions strongly agree. Uncertain
+clips show a manual suggestion. See the [orientation controls](user-guide.md#video-orientation)
+and [evaluation](benchmarks/orientation.md). Orientation uses CPU ONNX Runtime
+and does not need model conversion or a GPU.
+
 For a new environment, follow [optional CPU/NVIDIA/AMD setup](gpu-setup.md).
 The paths below describe environments already prepared on this checkout.
 
@@ -98,7 +105,14 @@ python3 -m uwcc render /tmp/C0201-reference.uwcc-project.json /tmp/C0201-ai-deno
 **Full-resolution neural denoise is much slower on CPU than conventional
 `hqdn3d`.** It is an explicit choice, not enabled by automatic color analysis.
 Color workers cannot accelerate the sequential temporal denoiser that feeds
-them. The UI now reports the actual CPU/GPU backend, neural frame and tile
+them. Denoise now uses one preparation worker to overlap decoding, input
+transfer conversion, and full-frame GPU tensor packing with inference. It keeps
+one future temporal window, preserves frame order, and joins the worker on
+cancellation. Input buffers are bounded, but add memory beyond the color-worker
+budget. Use `UWCC_DENOISE_PREFETCH=0` for a serial comparison. On a short C0201
+GPU test this reduced decode-and-denoise time by about 17%; see the
+[pipeline benchmark](benchmarks/denoise-pipeline.md) for scope and measurements.
+The UI reports the actual CPU/GPU backend, neural frame and tile
 progress, and encoded frame count. Render updates are throttled by elapsed time
 rather than source fps, so a slow 100 fps export no longer hides 25 frames of work
 behind a stale frame counter. Ready color results are drained without waiting
