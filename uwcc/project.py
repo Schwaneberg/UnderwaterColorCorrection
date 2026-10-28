@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field
 from fractions import Fraction
 from pathlib import Path
 
+from . import __version__
 from .errors import UWCCError
 
 # name: (label, minimum, maximum, default, step)
@@ -139,6 +140,8 @@ class Grade:
     stabilization_region: str = "seabed"
     denoise_engine: str = "classical"
     rotation: str = "auto"
+    video_encoder: str = "cpu"
+    video_decoder: str = "cpu"
 
     def at(self, seconds: float) -> dict:
         result = dict(self.values)
@@ -170,6 +173,12 @@ class Grade:
     @classmethod
     def from_dict(cls, data):
         grade = cls()
+        from .codecs import ENCODERS, DECODERS
+        for name, choices in (("video_encoder", ENCODERS), ("video_decoder", DECODERS)):
+            value = data.get(name, getattr(grade, name))
+            if not isinstance(value, str) or value not in choices:
+                raise UWCCError(f"Unknown {name.replace('_', ' ')}.")
+            setattr(grade, name, value)
         grade.rotation = data.get("rotation", "auto")
         if grade.rotation not in ("auto", "0", "90", "180", "270"):
             raise UWCCError("Unknown video rotation.")
@@ -233,7 +242,7 @@ class Project:
                 source = os.path.relpath(source, relative_to)
             except ValueError:
                 pass
-        return {"schema_version": 1, "application_version": "0.1.0", "source": source,
+        return {"schema_version": 1, "application_version": __version__, "source": source,
                 "source_fingerprint": self.source_fingerprint,
                 "grade": self.grade.to_dict(), "analysis": self.analysis, "orientation": self.orientation}
 

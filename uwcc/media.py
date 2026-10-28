@@ -82,6 +82,7 @@ class MediaInfo:
     audio_offsets: list = field(default_factory=list)
     correction_rotation: int = 0
     profile_evidence: str = ""
+    pixel_format: str = "unknown"
 
 
 def probe(path, cancel=None):
@@ -112,7 +113,7 @@ def probe(path, cancel=None):
                          video.get("sample_aspect_ratio", "1:1"), primaries, trc, video.get("color_range", "unknown"),
                          [s.get("codec_name", "") for s in streams if s["codec_type"] == "audio"],
                          [float(s.get("start_time", 0))-float(video.get("start_time", 0)) for s in streams if s["codec_type"] == "audio"],
-                         profile_evidence=evidence)
+                         profile_evidence=evidence, pixel_format=video.get("pix_fmt", "unknown"))
     except (ValueError, KeyError, StopIteration, ZeroDivisionError) as exc:
         raise UWCCError(f"No supported, finite-duration video stream: {exc}") from exc
 
@@ -125,9 +126,14 @@ def proxy_size(info, max_width):
 class FrameReader:
     """Read RGB48LE frames while a watcher makes blocked pipe reads cancelable."""
 
-    def __init__(self, info, max_width=None, start=0, sample_rate=None, cancel=None, single=False, finishing=None, stabilization_plan=None, progress=None):
+    def __init__(self, info, max_width=None, start=0, sample_rate=None, cancel=None, single=False, finishing=None, stabilization_plan=None, progress=None, decoder=None):
         self.width, self.height = proxy_size(info, max_width)
         self.cancel = cancel or threading.Event()
+        from .codecs import decoder as select_decoder
+        preference = decoder if decoder is not None else (finishing.video_decoder if finishing is not None else "cpu")
+        decode_args, decode_filters, self.decode_backend = select_decoder(info, preference, self.cancel)
+        if progress:
+            progress(self.decode_backend)
         self.stabilizer = self.denoiser = None
         if finishing is not None:
             if finishing.denoise and finishing.denoise_engine == "ai" and not finishing.denoise_manifest:
@@ -154,8 +160,8 @@ class FrameReader:
                 "-filter_threads", str(min(4, threads))]
         if start:
             args += ["-ss", str(max(0, start))]
-        args += ["-i", info.path, "-map", f"0:{info.video_index}", "-an", "-sn", "-dn"]
-        filters = []
+        args += [*decode_args, "-i", info.path, "-map", f"0:{info.video_index}", "-an", "-sn", "-dn"]
+        filters = list(decode_filters)
         rotation = getattr(info, "correction_rotation", 0)
         if rotation in (90, 270):
             filters.append("transpose=clock" if rotation == 90 else "transpose=cclock")

@@ -70,6 +70,12 @@ uwcc render C0202.json corrected_C0202.mp4
 
 ### Color correction
 
+Exports default to **CPU** video encoding and decoding. Choose **NVIDIA NVENC**
+in the export encoder control to opt in, or **NVIDIA with CPU fallback** for
+availability-based selection. Choose the decoder separately. GPU decoding still
+downloads frames for the CPU color and stabilization pipeline. See
+[video acceleration](video-acceleration.md) for CLI examples and measurements.
+
 1. Choose **Open video** or drop a video on the workspace.
 2. The input color profile is detected by default. The text below the selector
    shows the metadata used. You can override it, or choose **Auto-detect input

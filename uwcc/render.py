@@ -108,6 +108,9 @@ def render(project, destination, profile="h264", cancel=None, progress=lambda *_
         raise UWCCError("This encoder requires even video dimensions.")
     if profile == "dnxhr" and (info.width < 256 or info.height < 120):
         raise UWCCError("DNxHR requires at least 256×120 video dimensions.")
+    from .codecs import encoder
+    codec_args, encode_backend = encoder(profile, codec_args, info, project.grade.video_encoder, cancel)
+    progress(0, encode_backend)
     output = project.grade.output_profile
     primaries, transfer, matrix = ("bt709", "bt709", "bt709") if output == "rec709" else (
         "bt2020", "arib-std-b67" if output == "hlg" else "smpte2084", "bt2020nc")
@@ -154,7 +157,7 @@ def render(project, destination, profile="h264", cancel=None, progress=lambda *_
             script.write_text(graph, encoding="utf-8")
             args[filter_index:filter_index+2] = ["-filter_script:v", str(script)]
             args += ["-enc_time_base", "1:1000000", "-fps_mode", "vfr"]
-        if profile == "hevc":
+        if profile == "hevc" and "libx265" in codec_args:
             args += ["-x265-params", f"pools={threads}:frame-threads={min(threads, 3)}"]
         args += [str(video)]
         with tempfile.TemporaryFile() as errors:
@@ -175,7 +178,7 @@ def render(project, destination, profile="h264", cancel=None, progress=lambda *_
                 fraction = min(.93, render_start+frames/max(expected, 1)*(.93-render_start))
                 progress(fraction, f"{message} · output {frames}/{expected}")
             try:
-                progress(render_start, f"Rendering with {workers} color workers; up to {threads} codec threads")
+                progress(render_start, f"{encode_backend}; {workers} color workers; up to {threads} codec threads")
                 with FrameReader(info, cancel=cancel, finishing=project.grade, stabilization_plan=stabilization_plan,
                                  progress=finishing_progress) as reader:
                     for index, raw in corrected_frames(reader, info, project, times, cancel, workers):

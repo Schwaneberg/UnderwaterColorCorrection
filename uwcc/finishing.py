@@ -185,7 +185,7 @@ def build_stabilization_plan(info, grade, cancel=None, progress=lambda *_: None)
     from .media import FrameReader
     tracker = BackgroundStabilizer(info.fps, grade.stabilization_region)
     matrices, zoom = [], 1.
-    with FrameReader(info, max_width=640, cancel=cancel) as reader:
+    with FrameReader(info, max_width=640, cancel=cancel, decoder=grade.video_decoder) as reader:
         scale = np.diag([info.width/reader.width, info.height/reader.height, 1.])
         for index, frame in enumerate(reader):
             if cancel and cancel.is_set():

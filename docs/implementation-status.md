@@ -1,9 +1,15 @@
-# Implementation status — 0.1.0
+# Implementation status — 0.2.0
 
 This is a runnable development application. The product and technical
 specifications remain the v1 target; this file records actual implementation.
 
 ## Implemented
+
+- Optional runtime-tested NVIDIA NVENC H.264/10-bit HEVC encoding with CPU
+  fallback, optional NVDEC decoding with CPU frame download, and GUI/CLI codec
+  choices preserved in projects, presets, and batch jobs. See
+  [video acceleration](video-acceleration.md). CPU encoding and decoding remain
+  the defaults; hardware video codecs require explicit selection.
 
 - Initial Ubuntu 26.04 Debian source/binary packaging, desktop launcher/icon,
   native Python/Qt/FFmpeg dependencies, build CI and installed-package smoke test.

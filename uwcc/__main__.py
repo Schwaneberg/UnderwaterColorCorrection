@@ -63,6 +63,10 @@ def parser():
     for command in (analysis, batch):
         command.add_argument("--auto-method", choices=["ai", "adaptive", "legacy"], default="ai")
     for command in (analysis, export, batch):
+        command.add_argument("--video-encoder", choices=["auto", "cpu", "nvenc"],
+                             help="Video encoder: CPU by default; opt in to nvenc or auto with CPU fallback")
+        command.add_argument("--video-decoder", choices=["cpu", "auto", "cuda"],
+                             help="Video decoder: CPU by default; optional NVIDIA NVDEC with frame download")
         command.add_argument("--rotation", choices=["auto", "0", "90", "180", "270"],
                              help="Additional clockwise quarter-turn correction; auto uses metadata/local AI")
         command.add_argument("--stabilize", action="store_true", default=None,
@@ -96,6 +100,9 @@ def main(argv=None):
         print(f"{fraction:6.1%}  {message}", file=sys.stderr)
 
     def finishing(grade):
+        for name in ("video_encoder", "video_decoder"):
+            if getattr(args, name) is not None:
+                setattr(grade, name, getattr(args, name))
         if args.rotation is not None:
             grade.rotation = args.rotation
         if args.stabilize is not None:

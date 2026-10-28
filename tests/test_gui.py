@@ -118,6 +118,24 @@ def test_batch_defaults_to_per_clip_profile_detection(clip, automatic_window, mo
     dialog.close()
 
 
+def test_video_codec_selection_preserves_analysis_and_undo(clip, automatic_window):
+    from uwcc.media import probe
+    from uwcc.project import Grade, Project
+    window, _, errors = automatic_window
+    analysis = {"engine": "test", "shots": 1, "confidence": 1., "warnings": []}
+    window.opened((probe(clip), Project(str(clip), Grade(input_profile="rec709"), analysis=analysis)))
+    window.video_encoder.setCurrentIndex(window.video_encoder.findData("nvenc"))
+    window.video_decoder.setCurrentIndex(window.video_decoder.findData("cuda"))
+    assert window.project.grade.video_encoder == "nvenc"
+    assert window.project.grade.video_decoder == "cuda"
+    assert window.project.analysis == analysis
+    window.undo()
+    assert window.project.grade.video_decoder == "cpu"
+    window.undo()
+    assert window.project.grade.video_encoder == "cpu"
+    assert not errors
+
+
 def test_settings_changed_during_analysis_discard_stale_result(clip, automatic_window, monkeypatch):
     import threading
     import uwcc.gui as gui

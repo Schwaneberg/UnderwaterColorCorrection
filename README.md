@@ -8,7 +8,7 @@ to accept ordinary standards-compliant video from other cameras as well.
 
 This repository contains a runnable Python desktop application and headless
 video-processing commands, together with the target v1 specifications. The
-current development version is 0.1.0; it includes classical adaptive correction
+current development version is 0.2.0; it includes classical adaptive correction
 and an optional local ONNX model interface. No trained model is bundled.
 
 ## Install on Ubuntu
@@ -72,6 +72,11 @@ Optional AI dependencies are available as `.[ml]` (CPU), `.[ml-nvidia]`
 (NVIDIA CUDA on Linux/Windows), and `.[ml-amd]` (AMD via DirectML on Windows).
 Install one ML extra per environment. See [GPU setup](docs/gpu-setup.md) for
 installation commands, driver requirements, verification, and platform limits.
+
+Video encoding and decoding use the CPU by default. Optional NVIDIA NVENC
+encoding and NVDEC decoding are selectable in the export controls and CLI.
+NVIDIA AI acceleration does not automatically enable hardware video codecs.
+See [video acceleration](docs/video-acceleration.md) for choices and measurements.
 
 ## Product direction
 

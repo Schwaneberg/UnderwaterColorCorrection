@@ -1,3 +1,13 @@
+uwcc (0.2.0-1~ppa1) resolute; urgency=medium
+
+  * Add optional runtime-tested NVIDIA NVENC H.264 and 10-bit HEVC export.
+  * Add optional NVIDIA NVDEC decoding with precision-preserving frame
+    downloads.
+  * Expose codec choices in GUI, CLI, projects, presets, and batch jobs.
+  * Keep CPU encoding and decoding as defaults; hardware codecs require opt-in.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Wed, 28 Oct 2026 20:00:00 +0100
+
 uwcc (0.1.0-1~ppa7) resolute; urgency=medium
 
   * Use the supplied stingray reef artwork for application and desktop icons.

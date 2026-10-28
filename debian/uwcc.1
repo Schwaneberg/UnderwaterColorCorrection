@@ -1,4 +1,4 @@
-.TH UWCC 1 "October 2026" "UWCC 0.1.0" "User Commands"
+.TH UWCC 1 "October 2026" "UWCC 0.2.0" "User Commands"
 .SH NAME
 uwcc \- local underwater video color correction
 .SH SYNOPSIS
@@ -50,6 +50,12 @@ Show the model directory, discovered manifests, and inference runtime providers.
 Use
 .B uwcc COMMAND --help
 for each command's arguments and options.
+.PP
+H.264 and HEVC exports use CPU encoding by default. Use --video-encoder nvenc
+to require NVIDIA encoding, or auto to opt in with CPU fallback.
+Use --video-decoder cpu, auto, or cuda for export decoding. CPU decoding is
+the default because GPU frames must be downloaded for CPU processing.
+Forced nvenc or cuda modes fail if unavailable; auto modes allow CPU fallback.
 .SH ENVIRONMENT
 .TP
 .B XDG_DATA_HOME

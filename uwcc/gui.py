@@ -22,6 +22,7 @@ from .project import (BUILTINS, CONTROLS, FILTERS, OUTPUTS, PROFILES, Grade, Pro
 from .qt import QtCore as C, QtGui as G, QtWidgets as W, Signal, multimedia
 from .render import RENDER_PROFILES, render
 from .orientation import ROTATIONS, oriented_info, project_info
+from .codecs import ENCODERS, DECODERS
 
 
 class Worker(C.QThread):
@@ -497,6 +498,11 @@ class MainWindow(W.QMainWindow):
         reset_all.clicked.connect(self.reset_all)
         form.addWidget(reset_all)
         self.export_profile = self.combo(form, "Export format", {k: v[0] for k, v in RENDER_PROFILES.items()})
+        self.video_encoder = self.combo(form, "Export video encoder", ENCODERS)
+        self.video_decoder = self.combo(form, "Export video decoder", DECODERS)
+        self.video_decoder.setToolTip("GPU decoding still downloads frames for CPU color and stabilization. CPU can be faster.")
+        self.video_encoder.currentIndexChanged.connect(self.video_codec_changed)
+        self.video_decoder.currentIndexChanged.connect(self.video_codec_changed)
         form.addStretch()
         scroll.setWidget(inspector)
         layout.addWidget(scroll)
@@ -580,6 +586,8 @@ class MainWindow(W.QMainWindow):
         self.ai_denoise.setEnabled(ready)
         self.auto_method.setEnabled(ready)
         self.rotation.setEnabled(ready and not busy)
+        self.video_encoder.setEnabled(ready and not busy)
+        self.video_decoder.setEnabled(ready and not busy)
         self.stabilization_region.setEnabled(ready)
         self.load_preset_button.setEnabled(not busy)
         self.save_preset_button.setEnabled(ready and not busy)
@@ -736,7 +744,8 @@ class MainWindow(W.QMainWindow):
         self.rotation.setCurrentIndex(self.rotation.findData(grade.rotation))
         self.rotation.blockSignals(False)
         self.sync_orientation()
-        for combo, value in ((self.auto_method, grade.auto_method), (self.stabilization_region, grade.stabilization_region)):
+        for combo, value in ((self.auto_method, grade.auto_method), (self.stabilization_region, grade.stabilization_region),
+                             (self.video_encoder, grade.video_encoder), (self.video_decoder, grade.video_decoder)):
             combo.blockSignals(True)
             combo.setCurrentIndex(combo.findData(value))
             combo.blockSignals(False)
@@ -839,6 +848,13 @@ class MainWindow(W.QMainWindow):
         slider.setValue(round(value/CONTROLS[name][4]))
         slider.blockSignals(False)
         self.changed()
+
+    def video_codec_changed(self):
+        if self.project:
+            self.remember()
+            self.project.grade.video_encoder = self.video_encoder.currentData()
+            self.project.grade.video_decoder = self.video_decoder.currentData()
+            self.changed()
 
     def update_profile_evidence(self):
         if self.info and self.project:
@@ -1256,7 +1272,8 @@ class MainWindow(W.QMainWindow):
             "<p>Local underwater color correction.<br>Classical adaptive engine included; optional local ONNX model.<br>"
             "Shared float32 CPU correction for preview and render.</p>"
             "<p>Current limitations: no bundled ML weights;<br>"
-            "CPU rendering; SDR preview for HDR media; no certified HDR monitor path.<br>"
+            "CPU color processing; optional NVIDIA video encode/decode;<br>"
+            "SDR preview for HDR media; no certified HDR monitor path.<br>"
             "See docs/implementation-status.md for specification coverage.</p>")
         dialog.setStandardButtons(W.QMessageBox.StandardButton.Ok)
         dialog.exec()
