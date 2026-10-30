@@ -297,10 +297,12 @@ class ModelSetupDialog(W.QDialog):
         for key, label in SETUP_ACTIONS.items():
             self.action_combo.addItem(label, key)
         layout.addWidget(self.action_combo)
-        self.bootstrap_converter = W.QCheckBox("Bootstrap private user PyTorch/ONNX converter environment if missing")
+        self.bootstrap_converter = W.QCheckBox("Automatically install PyTorch/ONNX model converter if missing (~1 GB download)")
+        self.bootstrap_converter.setChecked(True)
         self.bootstrap_converter.setToolTip(
-            "UDnet and FastDVDnet conversion requires CPU PyTorch and ONNX. "
-            "Orientation model download does not require a converter."
+            "UDnet and FastDVDnet conversion requires CPU PyTorch and ONNX. They are installed once into a "
+            "private folder under your user profile; UWCC itself is not modified. "
+            "The orientation model download does not need the converter."
         )
         layout.addWidget(self.bootstrap_converter)
         self.log = W.QPlainTextEdit()
@@ -324,7 +326,7 @@ class ModelSetupDialog(W.QDialog):
         status = model_status()
         models = status["models"]
         providers = ", ".join(status["providers"]) if status["providers"] else ("OpenCV DNN" if status["opencv"] else "none")
-        converter = "ready" if status["converter_ready"] else "not installed (enable bootstrap above or use orientation/download-only)"
+        converter = "ready" if status["converter_ready"] else "not installed yet (installed automatically when needed)"
         lines = [
             f"Model directory: {status['models_dir']}",
             f"Enhancement (UDnet): {'installed' if models.get('enhance') else 'not installed'}",
@@ -341,9 +343,22 @@ class ModelSetupDialog(W.QDialog):
         self.close_button.setEnabled(not active)
 
     def start(self):
-        from .model_setup import run_setup
+        from .model_setup import converter_ready, run_setup
         action = self.action_combo.currentData()
         bootstrap = self.bootstrap_converter.isChecked()
+        if action in ("all", "prepare", "prepare-gpu") and not converter_ready():
+            if not bootstrap:
+                W.QMessageBox.warning(self, "Model converter required",
+                                      "Converting UDnet/FastDVDnet needs PyTorch and ONNX. Enable automatic "
+                                      "installation, or choose the orientation or download-only action.")
+                return
+            answer = W.QMessageBox.question(
+                self, "Install model converter",
+                "PyTorch (CPU) and ONNX are needed once to convert the models.\n\n"
+                "UWCC will download about 1 GB and install them into a private folder in your user profile. "
+                "This can take several minutes. Continue?")
+            if answer != W.QMessageBox.StandardButton.Yes:
+                return
         self.log.setPlainText(f"Starting model setup ({action})…")
         self.worker = Worker(
             lambda cancel, progress: run_setup(action, bootstrap_converter=bootstrap, cancel=cancel, progress=progress),

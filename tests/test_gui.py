@@ -152,6 +152,29 @@ def test_model_setup_dialog_runs_action_and_refreshes_open_project(clip, automat
     dialog.close()
 
 
+def test_model_setup_dialog_prompts_converter_installation_when_missing(clip, automatic_window, monkeypatch):
+    import uwcc.gui as gui
+    from uwcc import model_setup
+    from uwcc.gui import ModelSetupDialog
+    from uwcc.qt import QtWidgets as W
+
+    window, wait_until, errors = automatic_window
+    monkeypatch.setattr(model_setup, "converter_ready", lambda: False)
+    questions = []
+    monkeypatch.setattr(W.QMessageBox, "question", lambda *a, **k: questions.append("asked") or W.QMessageBox.StandardButton.Yes)
+    setup_calls = []
+    monkeypatch.setattr(model_setup, "run_setup", lambda action, **kw: setup_calls.append(action) or "ok")
+
+    dialog = ModelSetupDialog(window)
+    dialog.action_combo.setCurrentIndex(dialog.action_combo.findData("prepare"))
+    dialog.start()
+    wait_until(lambda: dialog.worker is None)
+    assert questions == ["asked"]
+    assert setup_calls == ["prepare"]
+    assert not errors
+    dialog.close()
+
+
 def test_video_codec_selection_preserves_analysis_and_undo(clip, automatic_window):
     from uwcc.media import probe
     from uwcc.project import Grade, Project

@@ -64,6 +64,27 @@ def test_run_setup_executes_requested_steps_and_reports_progress(tmp_path, monke
     assert progress_events[-1][0] == 1.0
 
 
+def test_frozen_windows_app_bootstraps_embedded_python_and_installs_converter(tmp_path, monkeypatch):
+    env = tmp_path / "converter"
+    monkeypatch.setenv("UWCC_CONVERTER_ENV", str(env))
+    monkeypatch.setattr(model_setup.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(model_setup.os, "name", "nt")
+    python = env / "python.exe"
+
+    def bootstrap(destination, cancel=None, progress=None):
+        destination.mkdir(parents=True)
+        python.touch()
+        return python
+
+    monkeypatch.setattr(model_setup, "_bootstrap_embedded_python", bootstrap)
+    installs = []
+    monkeypatch.setattr(model_setup, "_run_cancellable", lambda args, cancel=None, env=None: installs.append(args) or "")
+    monkeypatch.setattr(model_setup.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stderr=""))
+    assert model_setup.ensure_converter_python() == str(python)
+    assert any("torch" in args and "https://download.pytorch.org/whl/cpu" in args for args in installs)
+    assert any("onnx" in args and "onnxruntime" in args for args in installs)
+
+
 def test_cli_model_tools_subcommand_delegates_to_model_setup(monkeypatch):
     from uwcc import __main__ as cli
 

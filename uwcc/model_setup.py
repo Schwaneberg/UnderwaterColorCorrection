@@ -51,13 +51,23 @@ def converter_environment_path():
 
 
 def _venv_python(env_path: Path) -> Path:
-    return env_path / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if os.name == "nt":
+        # Embeddable Python distributions keep python.exe at the root.
+        embedded = env_path / "python.exe"
+        return embedded if embedded.is_file() else env_path / "Scripts/python.exe"
+    return env_path / "bin/python"
+
+
+CONVERTER_CHECK = "import torch, onnx, cv2, onnxruntime, numpy"
+
+
+def _has_converter_modules():
+    return all(importlib.util.find_spec(name) for name in ("torch", "onnx", "cv2", "onnxruntime"))
 
 
 def converter_ready():
-    if not getattr(sys, "frozen", False):
-        if importlib.util.find_spec("torch") and importlib.util.find_spec("onnx"):
-            return True
+    if not getattr(sys, "frozen", False) and _has_converter_modules():
+        return True
     return _venv_python(converter_environment_path()).is_file()
 
 
@@ -133,59 +143,113 @@ def _run_cancellable(args, cancel=None, env=None):
             process.wait()
 
 
-def ensure_converter_python(bootstrap=False, cancel=None, progress=None):
-    if not getattr(sys, "frozen", False) and importlib.util.find_spec("torch") and importlib.util.find_spec("onnx"):
+def _download(url, destination: Path, cancel=None):
+    from urllib.request import urlopen
+    partial = destination.with_name(destination.name + ".partial")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with urlopen(url, timeout=120) as response, partial.open("wb") as output:
+            while block := response.read(1024 * 1024):
+                if cancel and cancel.is_set():
+                    raise Cancelled("Operation canceled.")
+                output.write(block)
+        partial.replace(destination)
+    finally:
+        partial.unlink(missing_ok=True)
+
+
+def _bootstrap_embedded_python(destination: Path, cancel=None, progress=None) -> Path:
+    """Install the official python.org embeddable distribution plus pip (Windows).
+
+    Used when UWCC runs as a frozen/MSIX app on a PC without a Python installation.
+    """
+    import platform
+    import zipfile
+    v = sys.version_info
+    version = f"{v.major}.{v.minor}.{v.micro}"
+    arch = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "amd64"
+    archive = destination.parent / f"python-{version}-embed-{arch}.zip"
+    if progress:
+        progress(0.05, f"Downloading Python {version} runtime for the model converter…")
+    _download(f"https://www.python.org/ftp/python/{version}/python-{version}-embed-{arch}.zip", archive, cancel)
+    shutil.rmtree(destination, ignore_errors=True)
+    with zipfile.ZipFile(archive) as bundle:
+        bundle.extractall(destination)
+    archive.unlink(missing_ok=True)
+    # Enable site-packages so pip-installed modules are importable.
+    for pth in destination.glob("python*._pth"):
+        lines = pth.read_text(encoding="utf-8").splitlines()
+        lines = ["import site" if line.strip() == "#import site" else line for line in lines]
+        if "import site" not in lines:
+            lines.append("import site")
+        pth.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    python = destination / "python.exe"
+    if progress:
+        progress(0.1, "Installing pip into the model converter runtime…")
+    get_pip = destination / "get-pip.py"
+    _download("https://bootstrap.pypa.io/get-pip.py", get_pip, cancel)
+    _run_cancellable([str(python), str(get_pip), "--no-warn-script-location"], cancel=cancel)
+    get_pip.unlink(missing_ok=True)
+    return python
+
+
+def _create_converter_runtime(destination: Path, cancel=None, progress=None) -> Path:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(destination, ignore_errors=True)
+    if not getattr(sys, "frozen", False):
+        if progress:
+            progress(0.05, "Creating private model converter environment…")
+        venv.EnvBuilder(with_pip=True).create(destination)
+        return _venv_python(destination)
+    if os.name == "nt":
+        return _bootstrap_embedded_python(destination, cancel, progress)
+    host_python = shutil.which("python3") or shutil.which("python")
+    if not host_python:
+        raise UWCCError("Install Python 3 to set up the local PyTorch model converter.")
+    if progress:
+        progress(0.05, "Creating private model converter environment…")
+    _run_cancellable([host_python, "-m", "venv", str(destination)], cancel=cancel)
+    return _venv_python(destination)
+
+
+def ensure_converter_python(bootstrap=True, cancel=None, progress=None):
+    """Return a Python interpreter with PyTorch, ONNX, OpenCV and ONNX Runtime.
+
+    Installs a private, user-owned converter runtime on first use (about 1 GB,
+    CPU-only PyTorch). The application's own environment is never modified.
+    """
+    if not getattr(sys, "frozen", False) and _has_converter_modules():
         return sys.executable
     destination = converter_environment_path()
     python = _venv_python(destination)
     if python.is_file():
-        check = subprocess.run(
-            [str(python), "-c", "import torch, onnx, cv2, onnxruntime, numpy"],
-            capture_output=True,
-            text=True,
-            **NO_WINDOW,
-        )
+        check = subprocess.run([str(python), "-c", CONVERTER_CHECK], capture_output=True, text=True, **NO_WINDOW)
         if check.returncode == 0:
             return str(python)
     if not bootstrap:
-        if not getattr(sys, "frozen", False):
-            return sys.executable
-        raise UWCCError(
-            "PyTorch and ONNX are required to convert UDnet/FastDVDnet weights. "
-            "Enable automatic converter environment setup or choose 'Download orientation model'."
-        )
-    if progress:
-        progress(0.05, "Creating private model converter environment…")
-    if not getattr(sys, "frozen", False):
-        venv.EnvBuilder(with_pip=True).create(destination)
-    else:
-        host_python = shutil.which("python3") or shutil.which("python") or shutil.which("py")
-        if not host_python:
-            raise UWCCError("Install Python 3.12+ on Windows to bootstrap the local PyTorch converter environment.")
-        cmd = [host_python, "-3", "-m", "venv", str(destination)] if Path(host_python).stem.lower() == "py" else [host_python, "-m", "venv", str(destination)]
-        _run_cancellable(cmd, cancel=cancel)
+        raise UWCCError("PyTorch and ONNX are required to convert UDnet/FastDVDnet weights.")
     if not python.is_file():
-        raise UWCCError(f"Converter environment python was not created at {python}")
+        python = _create_converter_runtime(destination, cancel, progress)
+    if not python.is_file():
+        raise UWCCError(f"Converter runtime python was not created at {python}")
     if progress:
-        progress(0.15, "Installing CPU PyTorch and ONNX into converter environment…")
+        progress(0.15, "Installing CPU PyTorch (large download, this can take several minutes)…")
     _run_cancellable(
-        [
-            str(python), "-m", "pip", "--isolated", "install",
-            "--index-url", "https://download.pytorch.org/whl/cpu",
-            "torch",
-        ],
+        [str(python), "-m", "pip", "--isolated", "install", "--disable-pip-version-check",
+         "--index-url", "https://download.pytorch.org/whl/cpu", "torch"],
         cancel=cancel,
     )
     if progress:
-        progress(0.35, "Installing ONNX export and validation dependencies…")
+        progress(0.3, "Installing ONNX, OpenCV and ONNX Runtime…")
     _run_cancellable(
-        [
-            str(python), "-m", "pip", "--isolated", "install",
-            "--index-url", "https://pypi.org/simple",
-            "onnx", "onnxscript", "opencv-python-headless", "onnxruntime", "numpy",
-        ],
+        [str(python), "-m", "pip", "--isolated", "install", "--disable-pip-version-check",
+         "--index-url", "https://pypi.org/simple",
+         "onnx", "onnxscript", "opencv-python-headless", "onnxruntime", "numpy"],
         cancel=cancel,
     )
+    check = subprocess.run([str(python), "-c", CONVERTER_CHECK], capture_output=True, text=True, **NO_WINDOW)
+    if check.returncode:
+        raise UWCCError(f"Model converter runtime validation failed:\n{check.stderr[-4000:]}")
     return str(python)
 
 
@@ -205,7 +269,7 @@ def run_frozen_script(script: Path, script_args: list[str]) -> int:
         sys.path = old_path
 
 
-def run_setup(action="all", models_dir=None, bootstrap_converter=False, cancel=None, progress=None):
+def run_setup(action="all", models_dir=None, bootstrap_converter=True, cancel=None, progress=None):
     if action not in SETUP_ACTIONS:
         raise UWCCError(f"Unknown model setup action: {action}")
     directory = (Path(models_dir) if models_dir else model_directory()).expanduser()
