@@ -64,6 +64,7 @@ def test_run_setup_executes_requested_steps_and_reports_progress(tmp_path, monke
     assert progress_events[-1][0] == 1.0
 
 
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows-specific converter bootstrap test')
 def test_frozen_windows_app_bootstraps_embedded_python_and_installs_converter(tmp_path, monkeypatch):
     env = tmp_path / "converter"
     monkeypatch.setenv("UWCC_CONVERTER_ENV", str(env))

@@ -4,7 +4,10 @@ import os
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
+import sys
 import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows packaging tests")
 
 from uwcc import media
 
