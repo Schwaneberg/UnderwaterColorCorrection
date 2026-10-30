@@ -120,5 +120,10 @@ jobs:
             echo "No release files found"
             exit 1
           fi
-          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber || \
-          gh release create "$GITHUB_REF_NAME" "${files[@]}" --title "UWCC $GITHUB_REF_NAME" --generate-notes
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists, uploading assets..."
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            echo "Creating release $GITHUB_REF_NAME with assets..."
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" --title "UWCC $GITHUB_REF_NAME" --generate-notes
+          fi
