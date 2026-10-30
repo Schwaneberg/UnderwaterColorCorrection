@@ -81,18 +81,21 @@ def test_bundle_ffmpeg_copies_binaries_and_companion_files(build_windows, tmp_pa
 
 
 def test_msix_layout_generates_valid_manifest_and_assets(build_windows, tmp_path):
-    root = Path(__file__).resolve().parents[1]
+    from PIL import Image
     bundle_dir = tmp_path / "bundle"
     (bundle_dir / "bin").mkdir(parents=True)
     (bundle_dir / "uwcc.exe").write_bytes(b"exe")
     (bundle_dir / "bin/ffmpeg.exe").write_bytes(b"ffmpeg")
     (bundle_dir / "bin/ffprobe.exe").write_bytes(b"ffprobe")
 
+    icon_path = tmp_path / "test_icon.png"
+    Image.new("RGBA", (64, 64), (10, 20, 30, 255)).save(icon_path)
+
     layout_dir = tmp_path / "msix-layout"
     build_windows.stage_msix_layout(
         bundle_dir,
         layout_dir,
-        root / "UWCC Stingray Reef Icon.png",
+        icon_path,
         identity_name="OliverSchwaneberg.UnderwaterColorCorrection",
         publisher="CN=12345678-ABCD",
         version="0.2.0",
