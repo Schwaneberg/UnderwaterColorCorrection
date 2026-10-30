@@ -23,6 +23,7 @@ def load_module(name, path):
 
 
 def export(kind, source, output):
+    import onnx
     import torch
     torch.set_num_threads(2)
     output.mkdir(parents=True, exist_ok=True)

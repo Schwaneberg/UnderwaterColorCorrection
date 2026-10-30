@@ -8,8 +8,8 @@ import tempfile
 with tempfile.TemporaryDirectory(prefix="uwcc-model-tools-") as directory:
     os.chdir(directory)
     os.environ["XDG_DATA_HOME"] = directory
-    import torch
     import onnx
+    import torch
     import onnxruntime as ort
     from onnxruntime.transformers.float16 import convert_float_to_float16
     from uwcc.model_setup import tool_directory
