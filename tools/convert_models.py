@@ -9,6 +9,7 @@ import importlib.util
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 
 import numpy as np
@@ -73,19 +74,23 @@ def export(kind, source, output):
         torch.onnx.export(model, inputs, str(path), input_names=names, output_names=["output"],
                           opset_version=17, dynamo=False)
     # Store constant Identity aliases as initializers for OpenCV compatibility.
-    import onnx
-    graph = onnx.load(path)
-    known = {x.name: x for x in graph.graph.initializer}
-    for node in list(graph.graph.node):
-        if node.op_type == "Identity" and node.input[0] in known:
-            tensor = onnx.TensorProto()
-            tensor.CopyFrom(known[node.input[0]])
-            tensor.name = node.output[0]
-            graph.graph.initializer.append(tensor)
-            known[tensor.name] = tensor
-            graph.graph.node.remove(node)
-    onnx.checker.check_model(graph)
-    onnx.save(graph, path)
+    # Run in a separate subprocess to avoid global C++ protobuf collisions between libtorch and python3-onnx on Linux.
+    subprocess.run([sys.executable, "-c", """
+import sys, onnx
+path = sys.argv[1]
+graph = onnx.load(path)
+known = {x.name: x for x in graph.graph.initializer}
+for node in list(graph.graph.node):
+    if node.op_type == "Identity" and node.input[0] in known:
+        tensor = onnx.TensorProto()
+        tensor.CopyFrom(known[node.input[0]])
+        tensor.name = node.output[0]
+        graph.graph.initializer.append(tensor)
+        known[tensor.name] = tensor
+        graph.graph.node.remove(node)
+onnx.checker.check_model(graph)
+onnx.save(graph, path)
+""", str(path)], check=True)
     import cv2
     cv2.setNumThreads(2)
     runtime = "opencv"

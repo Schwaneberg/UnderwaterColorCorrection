@@ -60,6 +60,7 @@ def parser():
     advice.add_argument("--allow-upload", action="store_true", help="Send three JPEG proxy frames to the selected provider")
     advice.add_argument("--output", required=True, help="Save a new project with the proposed grade")
     commands.add_parser("models", help="Show local AI model availability")
+    commands.add_parser("model-tools", help="Prepare and validate local AI models")
     for command in (analysis, batch):
         command.add_argument("--auto-method", choices=["ai", "adaptive", "legacy"], default="ai")
     for command in (analysis, export, batch):
@@ -80,6 +81,10 @@ def parser():
 
 
 def main(argv=None):
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] == "model-tools":
+        from .model_setup import main as model_setup_main
+        return model_setup_main(raw_argv[1:])
     args = parser().parse_args(argv)
     if args.command in (None, "gui"):
         try:

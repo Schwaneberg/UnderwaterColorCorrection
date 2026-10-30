@@ -1,3 +1,4 @@
+from pathlib import Path
 import threading
 
 import numpy as np
@@ -36,7 +37,7 @@ def test_stabilization_preserves_float_precision():
 def test_real_fastdvdnet_reduces_noise_and_cancels():
     pytest.importorskip("cv2")
     manifest = builtin_model("denoise")
-    if not manifest:
+    if not manifest or not (Path(manifest).parent / "model.onnx").is_file():
         pytest.skip("Optional FastDVDnet weights are not installed")
     rng = np.random.default_rng(8)
     frames = [np.clip(.5+rng.normal(0, 7.5/255, (96, 96, 3)), 0, 1).astype(np.float32) for _ in range(5)]

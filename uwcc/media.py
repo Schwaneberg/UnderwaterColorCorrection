@@ -7,6 +7,7 @@ import math
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from dataclasses import dataclass, field
@@ -32,7 +33,28 @@ def cpu_threads():
     return min(requested, available)
 
 
+def bundled_ffmpeg_dirs():
+    directories = []
+    override = os.environ.get("UWCC_FFMPEG_DIR")
+    if override:
+        directories.append(Path(override).expanduser())
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        directories.extend([exe_dir / "bin", exe_dir])
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            directories.append(Path(meipass) / "bin")
+    package_dir = Path(__file__).resolve().parent
+    directories.extend([package_dir / "bin", package_dir.parent / "bin"])
+    return directories
+
+
 def executable(name):
+    for directory in bundled_ffmpeg_dirs():
+        if directory.is_dir():
+            found = shutil.which(name, path=str(directory))
+            if found:
+                return found
     found = shutil.which(name)
     if not found:
         raise UWCCError(f"{name} is missing. Install FFmpeg and make it available on PATH.")

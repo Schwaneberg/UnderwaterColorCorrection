@@ -274,6 +274,133 @@ class BatchDialog(W.QDialog):
             event.accept()
 
 
+class ModelSetupDialog(W.QDialog):
+    def __init__(self, window):
+        super().__init__(window)
+        from .model_setup import SETUP_ACTIONS
+        self.setWindowTitle("Prepare local AI models")
+        self.resize(680, 440)
+        self.window, self.worker = window, None
+        layout = W.QVBoxLayout(self)
+        intro = W.QLabel(
+            "Download pinned upstream weights, verify SHA-256 checksums, and prepare local ONNX models.\n"
+            "Model setup is an explicit user action; UWCC never downloads weights automatically."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        self.status_label = W.QLabel()
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+        layout.addWidget(W.QLabel("Setup action"))
+        self.action_combo = W.QComboBox()
+        self.action_combo.setAccessibleName("Setup action")
+        for key, label in SETUP_ACTIONS.items():
+            self.action_combo.addItem(label, key)
+        layout.addWidget(self.action_combo)
+        self.bootstrap_converter = W.QCheckBox("Automatically install PyTorch/ONNX model converter if missing (~1 GB download)")
+        self.bootstrap_converter.setChecked(True)
+        self.bootstrap_converter.setToolTip(
+            "UDnet and FastDVDnet conversion requires CPU PyTorch and ONNX. They are installed once into a "
+            "private folder under your user profile; UWCC itself is not modified. "
+            "The orientation model download does not need the converter."
+        )
+        layout.addWidget(self.bootstrap_converter)
+        self.log = W.QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setPlaceholderText("Select an action and click Prepare models to begin.")
+        layout.addWidget(self.log, 1)
+        buttons = W.QHBoxLayout()
+        self.start_button = W.QPushButton("Prepare models")
+        self.start_button.clicked.connect(self.start)
+        self.cancel_button = W.QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.cancel)
+        self.close_button = W.QPushButton("Close")
+        self.close_button.clicked.connect(self.close)
+        for button in (self.start_button, self.cancel_button, self.close_button):
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+        self.refresh()
+
+    def refresh(self):
+        from .model_setup import model_status
+        status = model_status()
+        models = status["models"]
+        providers = ", ".join(status["providers"]) if status["providers"] else ("OpenCV DNN" if status["opencv"] else "none")
+        converter = "ready" if status["converter_ready"] else "not installed yet (installed automatically when needed)"
+        lines = [
+            f"Model directory: {status['models_dir']}",
+            f"Enhancement (UDnet): {'installed' if models.get('enhance') else 'not installed'}",
+            f"Denoise (FastDVDnet): {'installed' if models.get('denoise') else 'not installed'}",
+            f"Orientation (RightWayUp): {'installed' if models.get('orientation') else 'not installed'}",
+            f"Inference providers: {providers} · PyTorch/ONNX converter: {converter}",
+        ]
+        self.status_label.setText("\n".join(lines))
+        active = self.worker is not None and self.worker.isRunning()
+        self.start_button.setEnabled(not active)
+        self.action_combo.setEnabled(not active)
+        self.bootstrap_converter.setEnabled(not active)
+        self.cancel_button.setEnabled(active)
+        self.close_button.setEnabled(not active)
+
+    def start(self):
+        from .model_setup import converter_ready, run_setup
+        action = self.action_combo.currentData()
+        bootstrap = self.bootstrap_converter.isChecked()
+        if action in ("all", "prepare", "prepare-gpu") and not converter_ready():
+            if not bootstrap:
+                W.QMessageBox.warning(self, "Model converter required",
+                                      "Converting UDnet/FastDVDnet needs PyTorch and ONNX. Enable automatic "
+                                      "installation, or choose the orientation or download-only action.")
+                return
+            answer = W.QMessageBox.question(
+                self, "Install model converter",
+                "PyTorch (CPU) and ONNX are needed once to convert the models.\n\n"
+                "UWCC will download about 1 GB and install them into a private folder in your user profile. "
+                "This can take several minutes. Continue?")
+            if answer != W.QMessageBox.StandardButton.Yes:
+                return
+        self.log.setPlainText(f"Starting model setup ({action})…")
+        self.worker = Worker(
+            lambda cancel, progress: run_setup(action, bootstrap_converter=bootstrap, cancel=cancel, progress=progress),
+            self,
+        )
+        self.worker.progress.connect(lambda fraction, message: self.log.appendPlainText(f"[{fraction:5.0%}] {message}"))
+        self.worker.completed.connect(self._completed)
+        self.worker.failed.connect(self._failed)
+        self.worker.finished.connect(self._finished)
+        self.worker.start()
+        self.refresh()
+
+    def _completed(self, output):
+        if output:
+            self.log.appendPlainText(str(output))
+        self.window.models_prepared()
+
+    def _failed(self, message):
+        self.log.appendPlainText(f"Error: {message}")
+        if "canceled" not in message.lower():
+            W.QMessageBox.warning(self, "Model setup error", message)
+
+    def _finished(self):
+        worker = self.worker
+        self.worker = None
+        if worker is not None:
+            worker.deleteLater()
+        self.refresh()
+
+    def cancel(self):
+        if self.worker:
+            self.worker.cancel.set()
+
+    def closeEvent(self, event):
+        if self.worker and self.worker.isRunning():
+            self.cancel()
+            event.ignore()
+            W.QMessageBox.information(self, "Canceling setup", "Model preparation is stopping. Close this window once it has stopped.")
+        else:
+            event.accept()
+
+
 class MainWindow(W.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -327,6 +454,7 @@ class MainWindow(W.QMainWindow):
         self.reanalyze_shortcut = G.QShortcut(G.QKeySequence("Ctrl+Return"), self)
         self.reanalyze_shortcut.activated.connect(self.schedule_analysis)
         action("Batch…", self.batch)
+        self.models_action = action("AI models…", self.prepare_models)
         self.export_action = action("Export…", self.export_video, "Ctrl+E")
         toolbar.addSeparator()
         action("About / capabilities", self.about)
@@ -454,6 +582,10 @@ class MainWindow(W.QMainWindow):
             button.clicked.connect(callback)
             model_row.addWidget(button)
         form.addLayout(model_row)
+        self.prepare_models_button = W.QPushButton("Prepare local AI models…")
+        self.prepare_models_button.setToolTip("Download and prepare optional UDnet, FastDVDnet, and RightWayUp ONNX models locally.")
+        self.prepare_models_button.clicked.connect(self.prepare_models)
+        form.addWidget(self.prepare_models_button)
         self.controls = {}
         self.control_area = W.QWidget()
         control_layout = W.QVBoxLayout(self.control_area)
@@ -590,6 +722,8 @@ class MainWindow(W.QMainWindow):
         self.video_decoder.setEnabled(ready and not busy)
         self.stabilization_region.setEnabled(ready)
         self.load_preset_button.setEnabled(not busy)
+        self.prepare_models_button.setEnabled(not busy)
+        self.models_action.setEnabled(not busy)
         self.save_preset_button.setEnabled(ready and not busy)
         self.play_button.setEnabled(ready)
         self.timeline.setEnabled(ready)
@@ -998,6 +1132,21 @@ class MainWindow(W.QMainWindow):
                 self.sync_controls()
                 self.changed()
             self.task(select, selected)
+
+    def prepare_models(self):
+        self.model_dialog = ModelSetupDialog(self)
+        self.model_dialog.exec()
+
+    def models_prepared(self):
+        from .neural import builtin_model
+        self.statusBar().showMessage("Local AI models updated.")
+        if self.project:
+            if self.ai_denoise.isChecked():
+                self.project.grade.denoise_manifest = builtin_model("denoise")
+            if self.project.grade.auto_method == "ai":
+                self.project.analysis = None
+                self.schedule_analysis()
+            self.update_engine()
 
     def clear_model(self):
         if self.project:
