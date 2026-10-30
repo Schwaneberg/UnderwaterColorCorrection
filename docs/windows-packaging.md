@@ -64,6 +64,10 @@ Runtime, OpenCV, analysis with stabilization, and a render), and uploads the
 `uwcc-windows-x64` artifact containing the unsigned `.msix` and a portable
 `uwcc-windows-x64.zip`.
 
+When a version tag (e.g. `v0.2.0`) is pushed, the `release` job automatically
+attaches the `.msix` package, portable `.zip`, and Ubuntu `.deb` packages to a
+GitHub Release.
+
 ## Publishing to the Microsoft Store
 
 1. Register a developer account in [Microsoft Partner Center](https://partner.microsoft.com/dashboard)
