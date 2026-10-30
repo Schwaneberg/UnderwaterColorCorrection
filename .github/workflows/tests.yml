@@ -26,7 +26,7 @@ jobs:
       - name: Install Debian build tools and declared dependencies
         run: |
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential dpkg-dev python3 git lintian
+          DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential dpkg-dev python3 git lintian python3-opencv
           DEBIAN_FRONTEND=noninteractive apt-get build-dep -y .
       - name: Build binary and source packages
         run: |
@@ -42,3 +42,47 @@ jobs:
         with:
           name: uwcc-ubuntu-26.04
           path: dist/debian/*
+
+  windows-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ensure FFmpeg and install Windows build and runtime dependencies
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg -y --no-progress
+          }
+          python -m pip install --upgrade pip
+          python -m pip install ".[ml-amd,vision,test]" pyinstaller
+      - name: Run Windows packaging and model setup unit tests
+        run: python -m pytest -q tests/test_windows_packaging.py tests/test_model_setup.py
+      - name: Build Windows standalone executable and MSIX package
+        run: python tools/build_windows.py --require-native
+      - name: Smoke test bundled executable, FFmpeg, native kernels, and OpenCV
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "dist/windows/uwcc/uwcc.exe"
+          if (-not (Test-Path "dist/windows/uwcc/bin/ffmpeg.exe")) { throw "Bundled ffmpeg.exe missing" }
+          if (-not (Test-Path "dist/windows/uwcc/bin/ffprobe.exe")) { throw "Bundled ffprobe.exe missing" }
+          if (-not (Get-ChildItem "dist/windows/uwcc_*.msix" -ErrorAction SilentlyContinue)) { throw "MSIX package was not created" }
+          & $exe --help
+          $models = (& $exe models) -join "`n"
+          Write-Host $models
+          if ($models -notmatch "ONNX Runtime: True") { throw "ONNX Runtime missing from bundle" }
+          if ($models -notmatch "OpenCV: True") { throw "OpenCV missing from bundle" }
+          & "dist/windows/uwcc/bin/ffmpeg.exe" -v error -f lavfi -i "testsrc2=size=64x64:rate=4:duration=1" -c:v libx264 -threads 1 "$env:RUNNER_TEMP/source.mp4"
+          & $exe analyze "$env:RUNNER_TEMP/source.mp4" --profile rec709 --auto-method adaptive --stabilize --project "$env:RUNNER_TEMP/test.json"
+          & $exe render "$env:RUNNER_TEMP/test.json" "$env:RUNNER_TEMP/output.mp4"
+          $frames = (& "dist/windows/uwcc/bin/ffprobe.exe" -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames -of csv=p=0 "$env:RUNNER_TEMP/output.mp4").Trim()
+          if ($frames -ne "4") { throw "Expected 4 frames, got $frames" }
+          Compress-Archive -Path "dist/windows/uwcc" -DestinationPath "dist/windows/uwcc-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uwcc-windows-x64
+          path: |
+            dist/windows/*.msix
+            dist/windows/uwcc-windows-x64.zip

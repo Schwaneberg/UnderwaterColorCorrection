@@ -8,6 +8,7 @@ archive when makeappx.exe (Windows SDK) is available.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 from pathlib import Path
 import re
@@ -226,6 +227,25 @@ def find_makeappx(explicit: Path | None = None) -> Path | None:
     return None
 
 
+def verify_runtime_dependencies(*, allow_missing_vision: bool = False, allow_missing_ml: bool = False) -> list[str]:
+    packages = []
+    if importlib.util.find_spec("cv2"):
+        packages.append("cv2")
+    elif not allow_missing_vision:
+        raise RuntimeError(
+            "OpenCV (cv2) is not installed. Install the 'vision' extra ('pip install .[vision]') "
+            "before building the Windows package, or pass --allow-missing-vision."
+        )
+    if importlib.util.find_spec("onnxruntime"):
+        packages.append("onnxruntime")
+    elif not allow_missing_ml:
+        raise RuntimeError(
+            "ONNX Runtime (onnxruntime) is not installed. Install an ML extra ('pip install .[ml-amd]') "
+            "before building the Windows package, or pass --allow-missing-ml."
+        )
+    return packages
+
+
 def copy_support_files(source_root: Path, bundle_dir: Path):
     tools_dest = bundle_dir / "tools"
     tools_dest.mkdir(parents=True, exist_ok=True)
@@ -242,18 +262,28 @@ def build_bundle(
     output_bundle_dir: Path,
     ico_path: Path,
     ffmpeg_dir: Path | None = None,
+    *,
+    require_native: bool = False,
+    collect_packages: list[str] | None = None,
 ) -> Path:
     subprocess.run(
         [sys.executable, "setup.py", "build_ext", "--inplace"],
         cwd=source_root,
-        check=False,
+        check=require_native,
     )
+    if require_native and not list((source_root / "uwcc").glob("_native*.pyd")) and not list((source_root / "uwcc").glob("_native*.so")):
+        raise RuntimeError("Native C extension uwcc._native was not produced by build_ext.")
     sep = ";" if os.name == "nt" else ":"
     pyinstaller_dist = output_bundle_dir.parent / "_pyinstaller_dist"
     pyinstaller_work = output_bundle_dir.parent / "_pyinstaller_build"
     spec_dir = output_bundle_dir.parent / "_pyinstaller_spec"
     for folder in (pyinstaller_dist, pyinstaller_work, spec_dir):
         shutil.rmtree(folder, ignore_errors=True)
+    entry_script = source_root / "_uwcc_entry.py"
+    entry_script.write_text(
+        "import sys\nfrom uwcc.__main__ import main\n\nif __name__ == '__main__':\n    raise SystemExit(main())\n",
+        encoding="utf-8",
+    )
     cmd = [
         sys.executable,
         "-m",
@@ -261,11 +291,14 @@ def build_bundle(
         "--noconfirm",
         "--clean",
         "--onedir",
-        "--windowed",
+        "--hide-console",
+        "hide-early",
         "--name",
         "uwcc",
         "--icon",
         str(ico_path),
+        "--paths",
+        str(source_root),
         "--distpath",
         str(pyinstaller_dist),
         "--workpath",
@@ -274,10 +307,13 @@ def build_bundle(
         str(spec_dir),
         "--add-data",
         f"{source_root / 'uwcc/assets'}{sep}uwcc/assets",
-        "--collect-submodules",
+        "--collect-all",
         "uwcc",
-        str(source_root / "uwcc/__main__.py"),
     ]
+    for package in (collect_packages if collect_packages is not None else ["cv2", "onnxruntime"]):
+        if importlib.util.find_spec(package):
+            cmd.extend(["--collect-all", package])
+    cmd.append(str(entry_script))
     subprocess.run(cmd, cwd=source_root, check=True)
     built = pyinstaller_dist / "uwcc"
     if output_bundle_dir.exists():
@@ -333,10 +369,20 @@ def main(argv=None) -> int:
     parser.add_argument("--makeappx", type=Path, help="Explicit path to Windows SDK makeappx.exe")
     parser.add_argument("--layout-only", action="store_true",
                         help="Prepare the standalone bundle and MSIX layout without invoking makeappx.exe")
+    parser.add_argument("--require-native", action="store_true",
+                        help="Fail the build if the optional uwcc._native C extension does not compile")
+    parser.add_argument("--allow-missing-vision", action="store_true",
+                        help="Allow building without OpenCV (cv2) installed")
+    parser.add_argument("--allow-missing-ml", action="store_true",
+                        help="Allow building without ONNX Runtime installed")
     args = parser.parse_args(argv)
 
     version = project_version(root)
     resolve_ffmpeg(args.ffmpeg_dir)
+    collect_packages = verify_runtime_dependencies(
+        allow_missing_vision=args.allow_missing_vision,
+        allow_missing_ml=args.allow_missing_ml,
+    )
     with tempfile.TemporaryDirectory(prefix="uwcc-win-") as temporary:
         work = Path(temporary)
         source = work / f"uwcc-{version}"
@@ -355,7 +401,14 @@ def main(argv=None) -> int:
         )
         args.output_dir.mkdir(parents=True, exist_ok=True)
         bundle_dir = args.output_dir / "uwcc"
-        build_bundle(source, bundle_dir, ico_path, ffmpeg_dir=args.ffmpeg_dir)
+        build_bundle(
+            source,
+            bundle_dir,
+            ico_path,
+            ffmpeg_dir=args.ffmpeg_dir,
+            require_native=args.require_native,
+            collect_packages=collect_packages,
+        )
         print(f"Standalone Windows bundle: {bundle_dir}")
 
         layout_dir = args.output_dir / "msix-layout"

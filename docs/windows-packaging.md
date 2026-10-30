@@ -48,6 +48,22 @@ This produces:
 Use `--layout-only` to stop after staging `dist/windows/msix-layout/` without
 invoking `makeappx.exe`.
 
+The build refuses to run unless OpenCV (`cv2`) and ONNX Runtime are installed
+in the build environment, so stabilization and local inference are never
+silently omitted. Both are bundled with PyInstaller `--collect-all` (including
+native DLLs such as `DirectML.dll`). Override with `--allow-missing-vision` /
+`--allow-missing-ml`. Pass `--require-native` to fail if the `uwcc._native`
+C extension does not compile.
+
+## Continuous integration
+
+The `windows-package` job in `.github/workflows/tests.yml` runs on every push
+and pull request on `windows-latest`. It builds the bundle and `.msix` with
+`--require-native`, smoke-tests the frozen `uwcc.exe` (bundled FFmpeg, ONNX
+Runtime, OpenCV, analysis with stabilization, and a render), and uploads the
+`uwcc-windows-x64` artifact containing the unsigned `.msix` and a portable
+`uwcc-windows-x64.zip`.
+
 ## Publishing to the Microsoft Store
 
 1. Register a developer account in [Microsoft Partner Center](https://partner.microsoft.com/dashboard)

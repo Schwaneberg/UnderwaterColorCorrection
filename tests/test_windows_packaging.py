@@ -117,3 +117,14 @@ def test_msix_layout_generates_valid_manifest_and_assets(build_windows, tmp_path
     for asset in ("StoreLogo.png", "Square44x44Logo.png", "Square150x150Logo.png", "Wide310x150Logo.png", "uwcc.ico"):
         assert (layout_dir / "Assets" / asset).is_file()
 
+
+def test_verify_runtime_dependencies_requires_cv2_and_onnxruntime_by_default(build_windows, monkeypatch):
+    monkeypatch.setattr(build_windows.importlib.util, "find_spec", lambda name: object() if name == "cv2" else None)
+    with pytest.raises(RuntimeError, match="ONNX Runtime"):
+        build_windows.verify_runtime_dependencies()
+    assert build_windows.verify_runtime_dependencies(allow_missing_ml=True) == ["cv2"]
+    monkeypatch.setattr(build_windows.importlib.util, "find_spec", lambda name: None)
+    with pytest.raises(RuntimeError, match="OpenCV"):
+        build_windows.verify_runtime_dependencies(allow_missing_ml=True)
+    assert build_windows.verify_runtime_dependencies(allow_missing_vision=True, allow_missing_ml=True) == []
+
