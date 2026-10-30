@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -32,3 +33,41 @@ def test_model_download_only_and_failure_propagation(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         model_setup.main(["prepare-gpu", "--download-only"])
     assert exc.value.code == 2
+
+
+def test_run_setup_executes_requested_steps_and_reports_progress(tmp_path, monkeypatch):
+    for script in model_setup.SCRIPTS.values():
+        (tmp_path / script).touch()
+    monkeypatch.setattr(model_setup, "tool_directory", lambda: tmp_path)
+    monkeypatch.setattr(model_setup, "ensure_converter_python", lambda **_: "converter-py")
+    calls = []
+    monkeypatch.setattr(
+        model_setup,
+        "_run_cancellable",
+        lambda args, cancel=None, env=None: calls.append(args) or f"ran {Path(args[1]).name}",
+    )
+    progress_events = []
+    output = model_setup.run_setup(
+        "all",
+        models_dir=tmp_path / "models",
+        progress=lambda frac, msg: progress_events.append((frac, msg)),
+    )
+    assert len(calls) == 2
+    assert calls[0] == ["converter-py", str(tmp_path / "prepare_models.py"), "--models-dir", str(tmp_path / "models")]
+    assert calls[1] == [
+        model_setup.sys.executable,
+        str(tmp_path / "prepare_orientation_model.py"),
+        "--models-dir",
+        str(tmp_path / "models"),
+    ]
+    assert "prepare_models.py" in output and "prepare_orientation_model.py" in output
+    assert progress_events[-1][0] == 1.0
+
+
+def test_cli_model_tools_subcommand_delegates_to_model_setup(monkeypatch):
+    from uwcc import __main__ as cli
+
+    forwarded = []
+    monkeypatch.setattr(model_setup, "main", lambda argv: forwarded.append(argv) or 0)
+    assert cli.main(["model-tools", "prepare-orientation", "--models-dir", "/tmp/m"]) == 0
+    assert forwarded == [["prepare-orientation", "--models-dir", "/tmp/m"]]

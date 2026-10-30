@@ -118,6 +118,40 @@ def test_batch_defaults_to_per_clip_profile_detection(clip, automatic_window, mo
     dialog.close()
 
 
+def test_model_setup_dialog_runs_action_and_refreshes_open_project(clip, automatic_window, monkeypatch, tmp_path):
+    import uwcc.gui as gui
+    from uwcc import model_setup
+    from uwcc.gui import ModelSetupDialog
+    from uwcc.media import probe
+    from uwcc.project import Grade, Project
+
+    window, wait_until, errors = automatic_window
+    calls = []
+    monkeypatch.setattr(gui, "analyze", lambda *_: calls.append("analyze") or {"engine": "ai-ready", "shots": 1, "confidence": 1.0, "warnings": []})
+    window.opened((probe(clip), Project(str(clip), Grade(input_profile="rec709", auto_method="ai"), analysis={"engine": "old", "shots": 1, "confidence": 1.0, "warnings": []})))
+    window.ai_denoise.setChecked(True)
+
+    setup_calls = []
+
+    def fake_run_setup(action, bootstrap_converter=False, cancel=None, progress=None):
+        setup_calls.append((action, bootstrap_converter))
+        if progress:
+            progress(0.5, "Preparing models…")
+        return "Models prepared."
+
+    monkeypatch.setattr(model_setup, "run_setup", fake_run_setup)
+    dialog = ModelSetupDialog(window)
+    dialog.action_combo.setCurrentIndex(dialog.action_combo.findData("prepare-orientation"))
+    dialog.bootstrap_converter.setChecked(True)
+    dialog.start()
+    wait_until(lambda: dialog.worker is None)
+    assert setup_calls == [("prepare-orientation", True)]
+    assert "Models prepared." in dialog.log.toPlainText()
+    wait_until(lambda: window.project.analysis is not None and window.project.analysis["engine"] == "ai-ready" and window.operation is None)
+    assert not errors
+    dialog.close()
+
+
 def test_video_codec_selection_preserves_analysis_and_undo(clip, automatic_window):
     from uwcc.media import probe
     from uwcc.project import Grade, Project
