@@ -11,7 +11,7 @@ jobs:
       - name: Install Ubuntu runtime and test dependencies
         run: |
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-numpy python3-pil python3-pyqt6 python3-pytest ffmpeg
+          DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-numpy python3-pil python3-pyqt6 python3-opencv python3-pytest ffmpeg
       - name: Test correction, GUI, and real codec round trips
         env:
           QT_QPA_PLATFORM: offscreen
@@ -22,11 +22,15 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:26.04
     steps:
+      - name: Install git before checkout (tools/build_deb.py needs a .git directory)
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates
       - uses: actions/checkout@v4
       - name: Install Debian build tools and declared dependencies
         run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential dpkg-dev python3 git lintian python3-opencv
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential dpkg-dev python3 lintian python3-opencv
           DEBIAN_FRONTEND=noninteractive apt-get build-dep -y .
       - name: Build binary and source packages
         run: |
@@ -65,6 +69,8 @@ jobs:
       - name: Smoke test bundled executable, FFmpeg, native kernels, and OpenCV
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $exe = Resolve-Path "dist/windows/uwcc/uwcc.exe"
           if (-not (Test-Path "dist/windows/uwcc/bin/ffmpeg.exe")) { throw "Bundled ffmpeg.exe missing" }
           if (-not (Test-Path "dist/windows/uwcc/bin/ffprobe.exe")) { throw "Bundled ffprobe.exe missing" }

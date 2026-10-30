@@ -58,6 +58,25 @@ def msix_version(version: str) -> str:
     return ".".join(str(n) for n in numbers[:4])
 
 
+def resolve_shim(path: Path) -> Path:
+    """Follow Chocolatey/Scoop launcher shims to the real executable.
+
+    Shims are tiny redirectors using relative paths, so copying them into a
+    bundle produces a broken binary.
+    """
+    parts = [part.lower() for part in path.parts]
+    name = path.name
+    candidates = []
+    if "chocolatey" in parts and path.parent.name.lower() == "bin":
+        candidates.extend(sorted((path.parent.parent / "lib").glob(f"*/tools/**/{name}")))
+    if path.parent.name.lower() == "shims" and "scoop" in parts:
+        candidates.extend(sorted((path.parent.parent / "apps").glob(f"*/current/**/{name}")))
+    for candidate in candidates:
+        if candidate.is_file() and candidate.stat().st_size > path.stat().st_size:
+            return candidate.resolve()
+    return path
+
+
 def resolve_ffmpeg(ffmpeg_dir: Path | None = None) -> tuple[Path, Path]:
     search_dir = ffmpeg_dir or (Path(os.environ["UWCC_FFMPEG_DIR"]) if os.environ.get("UWCC_FFMPEG_DIR") else None)
     paths = []
@@ -75,7 +94,7 @@ def resolve_ffmpeg(ffmpeg_dir: Path | None = None) -> tuple[Path, Path]:
             raise RuntimeError(
                 f"{name} was not found. Install FFmpeg on PATH or pass --ffmpeg-dir / set UWCC_FFMPEG_DIR."
             )
-        paths.append(Path(found).resolve())
+        paths.append(resolve_shim(Path(found).resolve()))
     return paths[0], paths[1]
 
 
@@ -322,7 +341,13 @@ def build_bundle(
     for folder in (pyinstaller_dist, pyinstaller_work, spec_dir):
         shutil.rmtree(folder, ignore_errors=True)
     copy_support_files(source_root, output_bundle_dir)
-    bundle_ffmpeg(output_bundle_dir / "bin", ffmpeg_dir=ffmpeg_dir)
+    for binary in bundle_ffmpeg(output_bundle_dir / "bin", ffmpeg_dir=ffmpeg_dir):
+        check = subprocess.run([str(binary), "-version"], capture_output=True, text=True)
+        if check.returncode or not check.stdout.lstrip().lower().startswith(binary.stem.lower() + " version"):
+            raise RuntimeError(
+                f"Bundled {binary.name} does not run standalone (is it a launcher shim?). "
+                f"Pass --ffmpeg-dir pointing at the real FFmpeg bin directory.\n{check.stdout}{check.stderr}"
+            )
     return output_bundle_dir
 
 

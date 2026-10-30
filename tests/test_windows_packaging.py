@@ -118,6 +118,22 @@ def test_msix_layout_generates_valid_manifest_and_assets(build_windows, tmp_path
         assert (layout_dir / "Assets" / asset).is_file()
 
 
+def test_chocolatey_and_scoop_shims_resolve_to_real_binaries(build_windows, tmp_path):
+    choco_shim = tmp_path / "chocolatey/bin/ffmpeg.exe"
+    choco_real = tmp_path / "chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe"
+    scoop_shim = tmp_path / "scoop/shims/ffprobe.exe"
+    scoop_real = tmp_path / "scoop/apps/ffmpeg/current/bin/ffprobe.exe"
+    for path, size in ((choco_shim, 10), (choco_real, 1000), (scoop_shim, 10), (scoop_real, 1000)):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * size)
+    assert build_windows.resolve_shim(choco_shim) == choco_real.resolve()
+    assert build_windows.resolve_shim(scoop_shim) == scoop_real.resolve()
+    plain = tmp_path / "ffmpeg/bin/ffmpeg.exe"
+    plain.parent.mkdir(parents=True)
+    plain.write_bytes(b"real")
+    assert build_windows.resolve_shim(plain) == plain
+
+
 def test_verify_runtime_dependencies_requires_cv2_and_onnxruntime_by_default(build_windows, monkeypatch):
     monkeypatch.setattr(build_windows.importlib.util, "find_spec", lambda name: object() if name == "cv2" else None)
     with pytest.raises(RuntimeError, match="ONNX Runtime"):
