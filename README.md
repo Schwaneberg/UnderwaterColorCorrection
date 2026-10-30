@@ -6,7 +6,7 @@ It is aimed first at footage from Sony Alpha 6300 and 6500 cameras, including
 clips recorded with red or magenta filters, but its media pipeline is intended
 to accept ordinary standards-compliant video from other cameras as well.
 
-![UWCC GUI](data\images\uwcc.png)
+![UWCC GUI](data/images/uwcc.png)
 
 This repository contains a runnable Python desktop application and headless
 video-processing commands, together with the target v1 specifications. The
