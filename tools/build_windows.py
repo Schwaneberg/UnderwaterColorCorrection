@@ -130,7 +130,9 @@ def prepare_windows_assets(icon_source: Path, assets_dir: Path, ico_path: Path, 
         for name, size in (
             ("StoreLogo.png", (50, 50)),
             ("Square44x44Logo.png", (44, 44)),
+            ("Square71x71Logo.png", (71, 71)),
             ("Square150x150Logo.png", (150, 150)),
+            ("Square300x300Logo.png", (300, 300)),
         ):
             tile = original.resize(size, Image.Resampling.LANCZOS)
             tile.save(assets_dir / name, format="PNG", optimize=True)
@@ -196,7 +198,9 @@ def write_appx_manifest(
         BackgroundColor="#141e2a"
         Square150x150Logo="Assets\\Square150x150Logo.png"
         Square44x44Logo="Assets\\Square44x44Logo.png">
-        <uap:DefaultTile Wide310x150Logo="Assets\\Wide310x150Logo.png" />
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\\Wide310x150Logo.png"
+          Square71x71Logo="Assets\\Square71x71Logo.png" />
       </uap:VisualElements>
       <Extensions>
         <uap5:Extension Category="windows.appExecutionAlias">

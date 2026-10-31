@@ -120,7 +120,7 @@ def test_msix_layout_generates_valid_manifest_and_assets(build_windows, tmp_path
     assert identity.attrib["Version"] == "0.2.0.0"
     capability = tree.find("m:Capabilities/rescap:Capability", ns)
     assert capability is not None and capability.attrib["Name"] == "runFullTrust"
-    for asset in ("StoreLogo.png", "Square44x44Logo.png", "Square150x150Logo.png", "Wide310x150Logo.png", "uwcc.ico"):
+    for asset in ("StoreLogo.png", "Square44x44Logo.png", "Square71x71Logo.png", "Square150x150Logo.png", "Square300x300Logo.png", "Wide310x150Logo.png", "uwcc.ico"):
         assert (layout_dir / "Assets" / asset).is_file()
 
 
