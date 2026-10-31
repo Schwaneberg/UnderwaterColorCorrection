@@ -85,4 +85,8 @@ GitHub Release.
 4. Upload `dist/windows/uwcc_<version>_x64.msix` to your submission in Partner
    Center. You do **not** need to sign the `.msix` yourself for Store uploads;
    Microsoft Partner Center signs the package automatically upon certification.
+5. **Store Listing Details**:
+   - **Privacy policy URL**: Provide https://github.com/Schwaneberg/UnderwaterColorCorrection/blob/main/PRIVACY.md.
+   - **Restricted capability (`runFullTrust`) justification**: Declare that UWCC is a packaged Win32 application requiring standard file system access and process execution for bundled FFmpeg video encoding/decoding and DirectML GPU acceleration.
+   - **Logos**: Upload data/icons/store/Square71x71Logo.png (71x71) and data/icons/store/Square300x300Logo.png (300x300).
 

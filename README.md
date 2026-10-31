@@ -119,3 +119,7 @@ dependency.
 See [LICENSE](LICENSE) for the complete GPL version 3 text. A release must also
 include dependency notices, model provenance, and a software bill of materials.
 
+## Privacy policy
+
+UWCC operates locally and offline by default. It requires no user accounts, collects no personal data, and contains no telemetry or analytics. See the [Privacy Policy](PRIVACY.md) for details.
+
