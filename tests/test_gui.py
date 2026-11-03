@@ -133,19 +133,21 @@ def test_model_setup_dialog_runs_action_and_refreshes_open_project(clip, automat
 
     setup_calls = []
 
-    def fake_run_setup(action, bootstrap_converter=False, cancel=None, progress=None):
-        setup_calls.append((action, bootstrap_converter))
+    def fake_run_setup(action, bootstrap_converter=False, cancel=None, progress=None, backend=None):
+        setup_calls.append((action, bootstrap_converter, backend))
         if progress:
             progress(0.5, "Preparing models…")
         return "Models prepared."
 
     monkeypatch.setattr(model_setup, "run_setup", fake_run_setup)
+    monkeypatch.setattr(model_setup, "converter_ready", lambda backend=None: True)
     dialog = ModelSetupDialog(window)
+    dialog.execution_buttons["cpu"].setChecked(True)
     dialog.action_combo.setCurrentIndex(dialog.action_combo.findData("prepare-orientation"))
     dialog.bootstrap_converter.setChecked(True)
     dialog.start()
     wait_until(lambda: dialog.worker is None)
-    assert setup_calls == [("prepare-orientation", True)]
+    assert setup_calls == [("prepare-orientation", True, "cpu")]
     assert "Models prepared." in dialog.log.toPlainText()
     wait_until(lambda: window.project.analysis is not None and window.project.analysis["engine"] == "ai-ready" and window.operation is None)
     assert not errors
@@ -159,7 +161,7 @@ def test_model_setup_dialog_prompts_converter_installation_when_missing(clip, au
     from uwcc.qt import QtWidgets as W
 
     window, wait_until, errors = automatic_window
-    monkeypatch.setattr(model_setup, "converter_ready", lambda: False)
+    monkeypatch.setattr(model_setup, "converter_ready", lambda backend=None: False)
     questions = []
     monkeypatch.setattr(W.QMessageBox, "question", lambda *a, **k: questions.append("asked") or W.QMessageBox.StandardButton.Yes)
     setup_calls = []
@@ -172,6 +174,25 @@ def test_model_setup_dialog_prompts_converter_installation_when_missing(clip, au
     assert questions == ["asked"]
     assert setup_calls == ["prepare"]
     assert not errors
+    dialog.close()
+
+
+def test_model_execution_radios_gate_cuda_actions(automatic_window, monkeypatch):
+    from uwcc.gui import ModelSetupDialog
+    from uwcc import execution
+    monkeypatch.setattr(execution, "selected_backend", lambda: "cpu")
+    window, _, _ = automatic_window
+    dialog = ModelSetupDialog(window)
+    assert dialog.execution_buttons["cpu"].isChecked()
+    cuda_action = dialog.action_combo.findData("validate-gpu")
+    assert not dialog.action_combo.model().item(cuda_action).isEnabled()
+    dialog.execution_buttons["cuda"].setChecked(True)
+    assert dialog.execution_backend() == "cuda"
+    assert not dialog.execution_buttons["cpu"].isChecked()
+    assert dialog.action_combo.model().item(cuda_action).isEnabled()
+    dialog.action_combo.setCurrentIndex(cuda_action)
+    dialog.execution_buttons["cpu"].setChecked(True)
+    assert dialog.action_combo.currentData() == "all"
     dialog.close()
 
 

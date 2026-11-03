@@ -63,7 +63,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ".[ml-amd,vision,test]" pyinstaller
       - name: Run Windows packaging and model setup unit tests
-        run: python -m pytest -q tests/test_windows_packaging.py tests/test_model_setup.py
+        run: python -m pytest -q tests/test_windows_packaging.py tests/test_model_setup.py tests/test_execution.py tests/test_neural_providers.py tests/test_validate_gpu_denoise.py
       - name: Build Windows standalone executable and MSIX package
         run: python tools/build_windows.py --require-native
       - name: Smoke test bundled executable, FFmpeg, native kernels, and OpenCV

@@ -5,6 +5,29 @@ with the [packaged setup commands](ubuntu-packaging.md#nvidia-runtime).
 The Python extras and virtual environments below are the source/Python-package
 alternative.
 
+In the desktop app, open **AI models…** and choose **CPU**, **NVIDIA CUDA**, or
+**AMD / DirectML (Windows)** under **Model execution**. Choose **Install or switch
+execution runtime only** to change execution without preparing model files again,
+or choose a model preparation action. Click **Prepare models**, then restart UWCC
+when setup finishes. The choice is remembered for subsequent launches and CLI
+inference; `UWCC_INFERENCE_DEVICE` remains an explicit override.
+
+The dialog installs a separate private runtime for each choice. NVIDIA uses CUDA
+PyTorch and `onnxruntime-gpu[cuda,cudnn]`; CPU uses CPU PyTorch and `onnxruntime`.
+DirectML uses `onnxruntime-directml` for GPU inference and CPU PyTorch for model
+conversion. ONNX itself has no separate GPU package. DirectML is available only
+on Windows and uses the standard models; the optional optimized FastDVDnet graphs
+and their validation require NVIDIA CUDA. A compatible driver is still required.
+
+The equivalent runtime-only command is:
+
+```powershell
+.venv\Scripts\python.exe -m uwcc model-tools runtime --backend cuda
+```
+
+Use `--backend cpu` or `--backend directml` for the other choices. The manual
+environment installation instructions below are an alternative to the dialog.
+
 UWCC runs classical correction without an AI runtime. Local neural enhancement
 and FastDVDnet denoise need model files and an inference runtime. Install from
 the repository root with Python 3.12+; FFmpeg/ffprobe must also be on PATH.
@@ -69,6 +92,19 @@ py -3.12 -m venv .venv-nvidia
 .venv-nvidia\Scripts\python.exe -m uwcc models
 .venv-nvidia\Scripts\python.exe -m uwcc
 ```
+
+If your existing `.venv` uses the CPU runtime, close UWCC and switch it before
+running **Validate optional CUDA FastDVDnet graphs**:
+
+```powershell
+.venv\Scripts\python.exe -m pip uninstall -y onnxruntime onnxruntime-directml
+.venv\Scripts\python.exe -m pip install "onnxruntime-gpu[cuda,cudnn]>=1.21"
+```
+
+Restart UWCC using that `.venv`. Preparing the optional CUDA graphs only creates
+model files; its private converter runtime does not add CUDA support to the
+application's environment. Validation runs in the application's environment so
+it checks the same runtime used for inference.
 
 ## AMD on Windows
 

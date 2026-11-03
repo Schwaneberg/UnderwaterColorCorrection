@@ -1,3 +1,13 @@
+uwcc (0.3.2-1~ppa1) resolute; urgency=medium
+
+  * Add explicit CPU, NVIDIA CUDA, and Windows DirectML execution choices.
+  * Install isolated per-backend runtimes and remember the selected runtime.
+  * Add runtime-only setup and CLI backend selection.
+  * Repair missing pip during converter setup and isolate Python validation.
+  * Improve CUDA validation diagnostics and document execution setup.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Tue, 03 Nov 2026 21:55:00 +0100
+
 uwcc (0.2.0-1~ppa1) resolute; urgency=medium
 
   * Add optional runtime-tested NVIDIA NVENC H.264 and 10-bit HEVC export.

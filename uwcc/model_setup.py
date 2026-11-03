@@ -22,6 +22,7 @@ SCRIPTS = {
 }
 
 SETUP_ACTIONS = {
+    "runtime": "Install or switch execution runtime only",
     "all": "Prepare all standard models (UDnet, FastDVDnet, RightWayUp)",
     "prepare": "Prepare enhancement & denoise models (UDnet + FastDVDnet)",
     "prepare-orientation": "Download orientation model (RightWayUp Max INT8)",
@@ -65,10 +66,13 @@ def _has_converter_modules():
     return all(importlib.util.find_spec(name) for name in ("torch", "onnx", "cv2", "onnxruntime"))
 
 
-def converter_ready():
-    if not getattr(sys, "frozen", False) and _has_converter_modules():
+def converter_ready(backend=None):
+    if backend is None and not getattr(sys, "frozen", False) and _has_converter_modules():
         return True
-    return _venv_python(converter_environment_path()).is_file()
+    destination = converter_environment_path()
+    if backend:
+        destination = destination.with_name(destination.name + f"-{backend}")
+    return _venv_python(destination).is_file()
 
 
 def _ready_manifest(manifest_path: str | Path | None) -> str | None:
@@ -212,42 +216,72 @@ def _create_converter_runtime(destination: Path, cancel=None, progress=None) -> 
     return _venv_python(destination)
 
 
-def ensure_converter_python(bootstrap=True, cancel=None, progress=None):
+def ensure_converter_python(bootstrap=True, cancel=None, progress=None, backend=None):
     """Return a Python interpreter with PyTorch, ONNX, OpenCV and ONNX Runtime.
 
-    Installs a private, user-owned converter runtime on first use (about 1 GB,
-    CPU-only PyTorch). The application's own environment is never modified.
+    Installs a private, user-owned runtime on first use. An explicit backend
+    selects matching inference packages and CPU or CUDA PyTorch. The application's
+    own environment is never modified.
     """
-    if not getattr(sys, "frozen", False) and _has_converter_modules():
+    if backend not in (None, "cpu", "cuda", "directml"):
+        raise UWCCError(f"Unknown execution backend: {backend}")
+    if backend == "directml" and sys.platform != "win32":
+        raise UWCCError("DirectML requires Windows. Choose CPU or NVIDIA CUDA.")
+    if backend is None and not getattr(sys, "frozen", False) and _has_converter_modules():
         return sys.executable
     destination = converter_environment_path()
+    if backend:
+        destination = destination.with_name(destination.name + f"-{backend}")
     python = _venv_python(destination)
+    validation = CONVERTER_CHECK
+    if backend:
+        provider = {"cpu": "CPUExecutionProvider", "cuda": "CUDAExecutionProvider", "directml": "DmlExecutionProvider"}[backend]
+        validation += f"; assert '{provider}' in onnxruntime.get_available_providers()"
+        validation += "; assert " + ("torch.version.cuda is not None" if backend == "cuda" else "torch.version.cuda is None")
     if python.is_file():
-        check = subprocess.run([str(python), "-c", CONVERTER_CHECK], capture_output=True, text=True, **NO_WINDOW)
+        check = subprocess.run([str(python), "-I", "-c", validation], capture_output=True, text=True, **NO_WINDOW)
         if check.returncode == 0:
             return str(python)
     if not bootstrap:
-        raise UWCCError("PyTorch and ONNX are required to convert UDnet/FastDVDnet weights.")
+        raise UWCCError("The selected PyTorch/ONNX runtime is missing or incomplete. Enable automatic installation.")
     if not python.is_file():
         python = _create_converter_runtime(destination, cancel, progress)
     if not python.is_file():
         raise UWCCError(f"Converter runtime python was not created at {python}")
+    # A previous interrupted/debugged bootstrap can leave Python without pip.
+    # Repair it before installing packages into this private environment.
+    pip_check = subprocess.run(
+        [str(python), "-I", "-m", "pip", "--version"],
+        capture_output=True, text=True, **NO_WINDOW,
+    )
+    if pip_check.returncode:
+        _run_cancellable(
+            [str(python), "-I", "-m", "ensurepip", "--upgrade"], cancel=cancel,
+        )
     if progress:
-        progress(0.15, "Installing CPU PyTorch (large download, this can take several minutes)…")
+        progress(0.15, f"Installing {'CUDA' if backend == 'cuda' else 'CPU'} PyTorch (large download, this can take several minutes)…")
+    torch_index = "cu130" if backend == "cuda" else "cpu"
     _run_cancellable(
-        [str(python), "-m", "pip", "--isolated", "install", "--disable-pip-version-check",
-         "--index-url", "https://download.pytorch.org/whl/cpu", "torch"],
+        [str(python), "-I", "-m", "pip", "--isolated", "install", "--disable-pip-version-check",
+         "--index-url", f"https://download.pytorch.org/whl/{torch_index}", "--upgrade", "--force-reinstall", "torch"],
         cancel=cancel,
     )
     if progress:
         progress(0.3, "Installing ONNX, OpenCV and ONNX Runtime…")
+    ort_package = {"cuda": "onnxruntime-gpu[cuda,cudnn]>=1.21", "directml": "onnxruntime-directml>=1.17"}.get(backend, "onnxruntime")
+    if backend:
+        # Interrupted installs must never leave overlapping ORT distributions.
+        _run_cancellable(
+            [str(python), "-I", "-m", "pip", "--isolated", "uninstall", "-y",
+             "onnxruntime", "onnxruntime-gpu", "onnxruntime-directml"], cancel=cancel,
+        )
     _run_cancellable(
-        [str(python), "-m", "pip", "--isolated", "install", "--disable-pip-version-check",
+        [str(python), "-I", "-m", "pip", "--isolated", "install", "--disable-pip-version-check",
          "--index-url", "https://pypi.org/simple",
-         "onnx", "onnxscript", "opencv-python-headless", "onnxruntime", "numpy"],
+         "onnx", "onnxscript", "opencv-python-headless", ort_package, "numpy"],
         cancel=cancel,
     )
-    check = subprocess.run([str(python), "-c", CONVERTER_CHECK], capture_output=True, text=True, **NO_WINDOW)
+    check = subprocess.run([str(python), "-I", "-c", validation], capture_output=True, text=True, **NO_WINDOW)
     if check.returncode:
         raise UWCCError(f"Model converter runtime validation failed:\n{check.stderr[-4000:]}")
     return str(python)
@@ -269,11 +303,21 @@ def run_frozen_script(script: Path, script_args: list[str]) -> int:
         sys.path = old_path
 
 
-def run_setup(action="all", models_dir=None, bootstrap_converter=True, cancel=None, progress=None):
+def run_setup(action="all", models_dir=None, bootstrap_converter=True, cancel=None, progress=None, backend=None):
+    if cancel and cancel.is_set():
+        raise Cancelled("Operation canceled.")
     if action not in SETUP_ACTIONS:
         raise UWCCError(f"Unknown model setup action: {action}")
+    if backend is not None and backend not in ("cpu", "cuda", "directml"):
+        raise UWCCError(f"Unknown execution backend: {backend}")
+    if backend is not None and action in ("prepare-gpu", "validate-gpu") and backend != "cuda":
+        raise UWCCError("Optional CUDA graphs require NVIDIA CUDA. CPU and DirectML use the standard models.")
     directory = (Path(models_dir) if models_dir else model_directory()).expanduser()
-    if action == "all":
+    if action == "runtime":
+        if backend is None:
+            raise UWCCError("Choose an execution backend to install its runtime.")
+        steps = []
+    elif action == "all":
         steps = [("prepare", False), ("prepare-orientation", False)]
     elif action == "download-only":
         steps = [("prepare", True)]
@@ -281,15 +325,28 @@ def run_setup(action="all", models_dir=None, bootstrap_converter=True, cancel=No
         steps = [(action, False)]
     tools = tool_directory()
     outputs = []
+    selected_python = None
+    if backend is not None:
+        selected_python = ensure_converter_python(
+            bootstrap=bootstrap_converter, cancel=cancel,
+            progress=(lambda f, msg: progress(f * 0.4, msg)) if progress else None,
+            backend=backend,
+        )
+    script_env = None
+    if backend:
+        script_env = os.environ.copy()
+        script_env["UWCC_INFERENCE_DEVICE"] = backend
     for index, (command, download_only) in enumerate(steps):
         if cancel and cancel.is_set():
             raise Cancelled("Operation canceled.")
         script = tools / SCRIPTS[command]
         if not script.is_file():
             raise UWCCError(f"Model setup script is missing: {script}")
-        base_fraction = index / len(steps)
+        base_fraction = (0.4 + 0.6 * index / len(steps)) if selected_python else index / len(steps)
         needs_converter = command in ("prepare", "prepare-gpu") and not download_only
-        if needs_converter:
+        if selected_python:
+            cmd = [selected_python, str(script), "--models-dir", str(directory)]
+        elif needs_converter:
             python = ensure_converter_python(
                 bootstrap=bootstrap_converter,
                 cancel=cancel,
@@ -305,9 +362,20 @@ def run_setup(action="all", models_dir=None, bootstrap_converter=True, cancel=No
         if progress:
             label = "Downloading weights" if download_only else f"Running {command}"
             progress(base_fraction + (0.4 if needs_converter else 0.1) / len(steps), f"{label}…")
-        text = _run_cancellable(cmd, cancel=cancel)
+        text = _run_cancellable(cmd, cancel=cancel, env=script_env)
         if text:
             outputs.append(text)
+    if selected_python:
+        if cancel and cancel.is_set():
+            raise Cancelled("Operation canceled.")
+        from .execution import save_runtime
+        site_packages = _run_cancellable(
+            [selected_python, "-I", "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"], cancel=cancel,
+        ).strip()
+        if not Path(site_packages).is_dir():
+            raise UWCCError("Selected runtime site-packages directory was not created.")
+        save_runtime(backend, site_packages)
+        outputs.append("Execution runtime saved. Restart UWCC to use it.")
     if progress:
         progress(1.0, "Model preparation complete.")
     return "\n".join(outputs) if outputs else f"Model setup ({action}) complete in {directory}."
@@ -315,10 +383,27 @@ def run_setup(action="all", models_dir=None, bootstrap_converter=True, cancel=No
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=list(SCRIPTS))
+    parser.add_argument("command", choices=list(SCRIPTS) + ["runtime"])
+    parser.add_argument("--backend", choices=["cpu", "cuda", "directml"], help="Install and select an execution runtime")
     parser.add_argument("--models-dir", type=Path, default=model_directory())
     parser.add_argument("--download-only", action="store_true", help="Download without converting (prepare only)")
     args = parser.parse_args(argv)
+    if args.backend is None:
+        from .execution import saved_runtime
+        saved = saved_runtime()
+        if saved:
+            args.backend = saved["backend"]
+    if args.backend is not None or args.command == "runtime":
+        if args.backend is None:
+            parser.error("runtime requires --backend")
+        try:
+            action = "download-only" if args.download_only and args.command == "prepare" else args.command
+            if args.download_only and args.command != "prepare":
+                parser.error("--download-only is only available with prepare")
+            print(run_setup(action, args.models_dir, backend=args.backend))
+            return 0
+        except UWCCError as exc:
+            parser.exit(1, f"{exc}\n")
     if args.download_only and args.command != "prepare":
         parser.error("--download-only is only available with prepare")
     script = tool_directory() / SCRIPTS[args.command]

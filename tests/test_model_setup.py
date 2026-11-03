@@ -94,3 +94,41 @@ def test_cli_model_tools_subcommand_delegates_to_model_setup(monkeypatch):
     monkeypatch.setattr(model_setup, "main", lambda argv: forwarded.append(argv) or 0)
     assert cli.main(["model-tools", "prepare-orientation", "--models-dir", "/tmp/m"]) == 0
     assert forwarded == [["prepare-orientation", "--models-dir", "/tmp/m"]]
+
+
+def test_converter_repairs_missing_pip_and_uses_isolated_python(tmp_path, monkeypatch):
+    monkeypatch.setattr(model_setup, "_has_converter_modules", lambda: False)
+    monkeypatch.setattr(model_setup, "converter_environment_path", lambda: tmp_path)
+    python = model_setup._venv_python(tmp_path)
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.touch()
+    checks = []
+    results = iter([1, 1, 0])  # missing modules, missing pip, successful validation
+
+    def check(args, **kwargs):
+        checks.append(args)
+        return SimpleNamespace(returncode=next(results), stderr="")
+
+    monkeypatch.setattr(model_setup.subprocess, "run", check)
+    installs = []
+    monkeypatch.setattr(model_setup, "_run_cancellable",
+                        lambda args, **kwargs: installs.append(args) or "")
+
+    assert model_setup.ensure_converter_python() == str(python)
+    assert installs[0] == [str(python), "-I", "-m", "ensurepip", "--upgrade"]
+    assert "torch" in installs[1]
+    assert "onnx" in installs[2]
+    assert all(args[:2] == [str(python), "-I"] for args in checks + installs)
+
+
+def test_converter_validation_failure_is_reported(tmp_path, monkeypatch):
+    monkeypatch.setattr(model_setup, "_has_converter_modules", lambda: False)
+    monkeypatch.setattr(model_setup, "converter_environment_path", lambda: tmp_path)
+    python = model_setup._venv_python(tmp_path)
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.touch()
+    monkeypatch.setattr(model_setup.subprocess, "run",
+                        lambda *args, **kwargs: SimpleNamespace(returncode=1, stderr="missing torch"))
+    monkeypatch.setattr(model_setup, "_run_cancellable", lambda *args, **kwargs: "")
+    with pytest.raises(model_setup.UWCCError, match="validation failed:\\nmissing torch"):
+        model_setup.ensure_converter_python()

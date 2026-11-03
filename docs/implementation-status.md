@@ -1,9 +1,17 @@
-# Implementation status — 0.2.0
+# Implementation status — 0.3.2
 
 This is a runnable development application. The product and technical
 specifications remain the v1 target; this file records actual implementation.
 
 ## Implemented
+
+- Explicit CPU, NVIDIA CUDA, and Windows DirectML model execution choices,
+  private per-backend runtimes, persisted selection, and runtime-only setup in
+  the AI models dialog and CLI. CUDA setup installs CUDA-enabled PyTorch and
+  ONNX Runtime; DirectML uses CPU PyTorch for conversion. Restart after switching.
+  Converter setup repairs missing pip and isolates package installation and
+  validation. CUDA graph validation reports missing runtime prerequisites with
+  installation guidance. See [GPU setup](gpu-setup.md).
 
 - Optional runtime-tested NVIDIA NVENC H.264/10-bit HEVC encoding with CPU
   fallback, optional NVDEC decoding with CPU frame download, and GUI/CLI codec

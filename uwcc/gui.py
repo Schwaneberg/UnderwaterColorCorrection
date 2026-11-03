@@ -279,7 +279,7 @@ class ModelSetupDialog(W.QDialog):
         super().__init__(window)
         from .model_setup import SETUP_ACTIONS
         self.setWindowTitle("Prepare local AI models")
-        self.resize(680, 440)
+        self.resize(760, 640)
         self.window, self.worker = window, None
         layout = W.QVBoxLayout(self)
         intro = W.QLabel(
@@ -291,18 +291,41 @@ class ModelSetupDialog(W.QDialog):
         self.status_label = W.QLabel()
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
+        from .execution import BACKENDS, selected_backend
+        execution_box = W.QGroupBox("Model execution")
+        execution_layout = W.QVBoxLayout(execution_box)
+        self.execution_group = W.QButtonGroup(self)
+        self.execution_buttons = {}
+        selected = selected_backend()
+        for key, label in BACKENDS.items():
+            button = W.QRadioButton(label)
+            button.setObjectName(f"execution_{key}")
+            button.setChecked(key == selected)
+            button.setEnabled(key != "directml" or sys.platform == "win32")
+            self.execution_group.addButton(button)
+            self.execution_buttons[key] = button
+            execution_layout.addWidget(button)
+        self.execution_hint = W.QLabel(
+            "NVIDIA installs CUDA PyTorch and ONNX Runtime. DirectML uses GPU inference with CPU model conversion.\n"
+            "Runtime downloads can be several GB. Restart UWCC after switching execution runtimes."
+        )
+        self.execution_hint.setWordWrap(True)
+        execution_layout.addWidget(self.execution_hint)
+        layout.addWidget(execution_box)
         layout.addWidget(W.QLabel("Setup action"))
         self.action_combo = W.QComboBox()
         self.action_combo.setAccessibleName("Setup action")
         for key, label in SETUP_ACTIONS.items():
             self.action_combo.addItem(label, key)
+        self.action_combo.setCurrentIndex(self.action_combo.findData("all"))
+        self.execution_group.buttonToggled.connect(self._execution_changed)
+        self._execution_changed()
         layout.addWidget(self.action_combo)
-        self.bootstrap_converter = W.QCheckBox("Automatically install PyTorch/ONNX model converter if missing (~1 GB download)")
+        self.bootstrap_converter = W.QCheckBox("Install the selected execution runtime and model converter if missing")
         self.bootstrap_converter.setChecked(True)
         self.bootstrap_converter.setToolTip(
-            "UDnet and FastDVDnet conversion requires CPU PyTorch and ONNX. They are installed once into a "
-            "private folder under your user profile; UWCC itself is not modified. "
-            "The orientation model download does not need the converter."
+            "Installs PyTorch, ONNX and the selected ONNX Runtime into a separate private folder "
+            "for each execution choice. CUDA uses GPU packages; DirectML uses CPU PyTorch for conversion."
         )
         layout.addWidget(self.bootstrap_converter)
         self.log = W.QPlainTextEdit()
@@ -320,6 +343,17 @@ class ModelSetupDialog(W.QDialog):
             buttons.addWidget(button)
         layout.addLayout(buttons)
         self.refresh()
+
+    def execution_backend(self):
+        return next(key for key, button in self.execution_buttons.items() if button.isChecked())
+
+    def _execution_changed(self, *args):
+        cuda = self.execution_backend() == "cuda"
+        for key in ("prepare-gpu", "validate-gpu"):
+            item = self.action_combo.model().item(self.action_combo.findData(key))
+            item.setEnabled(cuda)
+        if not cuda and self.action_combo.currentData() in ("prepare-gpu", "validate-gpu"):
+            self.action_combo.setCurrentIndex(self.action_combo.findData("all"))
 
     def refresh(self):
         from .model_setup import model_status
@@ -339,6 +373,8 @@ class ModelSetupDialog(W.QDialog):
         self.start_button.setEnabled(not active)
         self.action_combo.setEnabled(not active)
         self.bootstrap_converter.setEnabled(not active)
+        for key, button in self.execution_buttons.items():
+            button.setEnabled(not active and (key != "directml" or sys.platform == "win32"))
         self.cancel_button.setEnabled(active)
         self.close_button.setEnabled(not active)
 
@@ -346,22 +382,23 @@ class ModelSetupDialog(W.QDialog):
         from .model_setup import converter_ready, run_setup
         action = self.action_combo.currentData()
         bootstrap = self.bootstrap_converter.isChecked()
-        if action in ("all", "prepare", "prepare-gpu") and not converter_ready():
+        backend = self.execution_backend()
+        if not converter_ready(backend):
             if not bootstrap:
                 W.QMessageBox.warning(self, "Model converter required",
-                                      "Converting UDnet/FastDVDnet needs PyTorch and ONNX. Enable automatic "
-                                      "installation, or choose the orientation or download-only action.")
+                                      "The selected execution runtime is not installed. Enable automatic installation.")
                 return
             answer = W.QMessageBox.question(
                 self, "Install model converter",
-                "PyTorch (CPU) and ONNX are needed once to convert the models.\n\n"
-                "UWCC will download about 1 GB and install them into a private folder in your user profile. "
+                f"Install the {self.execution_buttons[backend].text()} runtime, PyTorch and ONNX?\n\n"
+                "UWCC will download the packages into a private folder in your user profile. "
+                "CUDA downloads can be several GB. "
                 "This can take several minutes. Continue?")
             if answer != W.QMessageBox.StandardButton.Yes:
                 return
         self.log.setPlainText(f"Starting model setup ({action})…")
         self.worker = Worker(
-            lambda cancel, progress: run_setup(action, bootstrap_converter=bootstrap, cancel=cancel, progress=progress),
+            lambda cancel, progress: run_setup(action, bootstrap_converter=bootstrap, cancel=cancel, progress=progress, backend=backend),
             self,
         )
         self.worker.progress.connect(lambda fraction, message: self.log.appendPlainText(f"[{fraction:5.0%}] {message}"))
@@ -374,7 +411,10 @@ class ModelSetupDialog(W.QDialog):
     def _completed(self, output):
         if output:
             self.log.appendPlainText(str(output))
-        self.window.models_prepared()
+        if output and "Restart UWCC" in str(output):
+            W.QMessageBox.information(self, "Restart UWCC", "Setup is complete. Restart UWCC to use the selected execution runtime.")
+        else:
+            self.window.models_prepared()
 
     def _failed(self, message):
         self.log.appendPlainText(f"Error: {message}")

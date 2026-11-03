@@ -1,0 +1,22 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "UWCC",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uwcc",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "subProcess": false,
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "VIRTUAL_ENV": "${workspaceFolder}/.venv",
+                "PATH": "${workspaceFolder}/.venv/Scripts;${env:PATH}"
+            }
+        }
+    ]
+}

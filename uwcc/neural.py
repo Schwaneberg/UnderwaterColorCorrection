@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from .errors import UWCCError
+from .execution import inference_device
 from .project import model_directory, read_json
 
 ALLOWED = {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "CC0-1.0", "GPL-3.0-or-later"}
@@ -52,7 +53,8 @@ class Network:
         self.backend = data.get("runtime", "onnxruntime")
         self.warning = ""
         self.allow_cpu_fallback = allow_cpu_fallback
-        if self.backend == "opencv" and not cpu_only and os.environ.get("UWCC_INFERENCE_DEVICE", "auto") != "cpu":
+        device = inference_device()
+        if self.backend == "opencv" and not cpu_only and device != "cpu":
             try:
                 import onnxruntime as ort
                 if any(p in ort.get_available_providers() for p in ("CUDAExecutionProvider", "DmlExecutionProvider")):
@@ -73,7 +75,10 @@ class Network:
                 self.ort, self.path, self.options = ort, str(path), options
                 providers = [p for p in ("CUDAExecutionProvider", "DmlExecutionProvider", "CPUExecutionProvider")
                              if p in ort.get_available_providers()]
-                if cpu_only or os.environ.get("UWCC_INFERENCE_DEVICE") == "cpu":
+                if device in ("cuda", "directml"):
+                    wanted = "CUDAExecutionProvider" if device == "cuda" else "DmlExecutionProvider"
+                    providers = [p for p in providers if p in (wanted, "CPUExecutionProvider")]
+                if cpu_only or device == "cpu":
                     providers = ["CPUExecutionProvider"]
                 if "DmlExecutionProvider" in providers:
                     # DirectML cannot initialize with memory patterns or parallel execution.

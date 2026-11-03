@@ -81,6 +81,8 @@ def parser():
 
 
 def main(argv=None):
+    from .execution import activate_runtime
+    activate_runtime()
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     if raw_argv and raw_argv[0] == "model-tools":
         from .model_setup import main as model_setup_main
