@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.3 — 2026-11-06
+
+### Fixed
+
+- Launch the Windows MSIX Start menu entry and file associations through a
+  windowed executable so no terminal window appears. Retain the console
+  executable and `uwcc` command alias for command-line use.
+- Find the bundled `convert_models.py` when preparing standard models with
+  Windows' isolated embedded Python runtime. Apply the same fix to optional
+  GPU model preparation, including existing converter runtimes.
+
+### Validation
+
+- All 24 Windows packaging, model preparation, and model setup tests passed.
+- Add isolated-interpreter regression tests for model preparation and packaging
+  tests for the GUI and console entry points.
+- Check the compiled Windows executable subsystem flags in CI.
+- Full model downloads, conversion, and installed MSIX launch validation remain
+  to be verified with the rebuilt package.
+
 ## 0.3.2 — 2026-11-03
 
 ### Added

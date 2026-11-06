@@ -3,9 +3,14 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
 
 import numpy as np
 
+# Embedded Python does not add the script directory to its isolated path.
+tools_dir = str(Path(__file__).resolve().parent)
+if tools_dir not in sys.path:
+    sys.path.insert(0, tools_dir)
 from convert_models import load_module
 
 

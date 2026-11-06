@@ -1,3 +1,11 @@
+uwcc (0.3.3-1~ppa1) resolute; urgency=medium
+
+  * Release 0.3.3 with Windows packaging and model preparation fixes.
+  * Launch the MSIX desktop app without a terminal, preserving CLI output.
+  * Resolve sibling converter imports in isolated embedded Python runtimes.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Fri, 06 Nov 2026 06:47:00 +0100
+
 uwcc (0.3.2-1~ppa1) resolute; urgency=medium
 
   * Add explicit CPU, NVIDIA CUDA, and Windows DirectML execution choices.

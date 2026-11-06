@@ -154,7 +154,7 @@ def write_appx_manifest(
     display_name: str = "Underwater Color Correction",
     publisher_display_name: str = "Oliver Schwaneberg",
     architecture: str = "x64",
-    executable: str = "uwcc.exe",
+    executable: str = "uwcc-gui.exe",
 ) -> Path:
     manifest_version = msix_version(version)
     xml = f"""<?xml version="1.0" encoding="utf-8"?>
@@ -203,7 +203,7 @@ def write_appx_manifest(
           Square71x71Logo="Assets\\Square71x71Logo.png" />
       </uap:VisualElements>
       <Extensions>
-        <uap5:Extension Category="windows.appExecutionAlias">
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="uwcc.exe" EntryPoint="Windows.FullTrustApplication">
           <uap5:AppExecutionAlias>
             <uap5:ExecutionAlias Alias="uwcc.exe" />
           </uap5:AppExecutionAlias>
@@ -314,8 +314,7 @@ def build_bundle(
         "--noconfirm",
         "--clean",
         "--onedir",
-        "--hide-console",
-        "hide-early",
+        "--console",
         "--name",
         "uwcc",
         "--icon",
@@ -339,6 +338,14 @@ def build_bundle(
     cmd.append(str(entry_script))
     subprocess.run(cmd, cwd=source_root, check=True)
     built = pyinstaller_dist / "uwcc"
+    # Keep the console entry point for CLI output and automation. The Start
+    # menu uses a Windows GUI subsystem executable, which never allocates a
+    # console (hiding a console is unreliable with Windows Terminal).
+    gui_cmd = cmd.copy()
+    gui_cmd[gui_cmd.index("--console")] = "--windowed"
+    gui_cmd[gui_cmd.index("--name") + 1] = "uwcc-gui"
+    subprocess.run(gui_cmd, cwd=source_root, check=True)
+    shutil.copy2(pyinstaller_dist / "uwcc-gui/uwcc-gui.exe", built / "uwcc-gui.exe")
     if output_bundle_dir.exists():
         shutil.rmtree(output_bundle_dir)
     shutil.move(str(built), str(output_bundle_dir))

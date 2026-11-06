@@ -39,7 +39,7 @@ Run `tools/build_windows.py` from the repository root:
 This produces:
 
 - `dist/windows/uwcc/` — standalone runnable application directory with
-  `uwcc.exe`, `bin/ffmpeg.exe`, `bin/ffprobe.exe`, and `tools/`.
+  `uwcc-gui.exe`, `uwcc.exe`, `bin/ffmpeg.exe`, `bin/ffprobe.exe`, and `tools/`.
 - `dist/windows/msix-layout/` — complete MSIX layout containing
   `AppxManifest.xml` and generated tile icons under `Assets/`.
 - `dist/windows/uwcc_<version>_x64.msix` — packed MSIX archive (when
@@ -47,6 +47,12 @@ This produces:
 
 Use `--layout-only` to stop after staging `dist/windows/msix-layout/` without
 invoking `makeappx.exe`.
+
+The Start menu and file associations launch `uwcc-gui.exe`, built with
+PyInstaller `--windowed` so no terminal window is created. For the portable
+bundle, open `uwcc-gui.exe` to launch the desktop app. The `uwcc.exe` executable
+and installed `uwcc` command alias retain a console for command-line output
+and automation. Both executables share the bundled runtime and dependencies.
 
 The build refuses to run unless OpenCV (`cv2`) and ONNX Runtime are installed
 in the build environment, so stabilization and local inference are never

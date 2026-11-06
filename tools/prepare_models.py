@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
 from urllib.request import urlopen
 
 SOURCES = {
@@ -55,6 +56,12 @@ def main(argv=None):
     if args.download_only:
         print(f"Upstream sources and verified weights downloaded to {source}")
         return
+    # Windows' embeddable converter Python uses an isolated ._pth search path,
+    # which does not include the input script's directory. Resolve our bundled
+    # sibling explicitly, including when reusing an already installed runtime.
+    tools_dir = str(Path(__file__).resolve().parent)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
     from convert_models import export
     for name in WEIGHTS:
         export(name, source, args.models_dir/name)

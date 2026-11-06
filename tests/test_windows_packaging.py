@@ -88,6 +88,7 @@ def test_msix_layout_generates_valid_manifest_and_assets(build_windows, tmp_path
     bundle_dir = tmp_path / "bundle"
     (bundle_dir / "bin").mkdir(parents=True)
     (bundle_dir / "uwcc.exe").write_bytes(b"exe")
+    (bundle_dir / "uwcc-gui.exe").write_bytes(b"gui-exe")
     (bundle_dir / "bin/ffmpeg.exe").write_bytes(b"ffmpeg")
     (bundle_dir / "bin/ffprobe.exe").write_bytes(b"ffprobe")
 
@@ -120,8 +121,43 @@ def test_msix_layout_generates_valid_manifest_and_assets(build_windows, tmp_path
     assert identity.attrib["Version"] == "0.2.0.0"
     capability = tree.find("m:Capabilities/rescap:Capability", ns)
     assert capability is not None and capability.attrib["Name"] == "runFullTrust"
+    application = tree.find("m:Applications/m:Application", ns)
+    assert application.attrib["Executable"] == "uwcc-gui.exe"
+    assert (layout_dir / application.attrib["Executable"]).is_file()
+    alias = application.find(
+        "m:Extensions/{http://schemas.microsoft.com/appx/manifest/uap/windows10/5}Extension", ns
+    )
+    assert alias.attrib["Executable"] == "uwcc.exe"
+    assert alias.attrib["EntryPoint"] == "Windows.FullTrustApplication"
     for asset in ("StoreLogo.png", "Square44x44Logo.png", "Square71x71Logo.png", "Square150x150Logo.png", "Square300x300Logo.png", "Wide310x150Logo.png", "uwcc.ico"):
         assert (layout_dir / "Assets" / asset).is_file()
+
+
+def test_bundle_includes_windowed_gui_and_console_cli(build_windows, tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    output = tmp_path / "output/uwcc"
+    commands = []
+
+    def run(cmd, **kwargs):
+        if "PyInstaller" in cmd:
+            commands.append(cmd)
+            name = cmd[cmd.index("--name") + 1]
+            bundle = Path(cmd[cmd.index("--distpath") + 1]) / name
+            bundle.mkdir(parents=True)
+            (bundle / f"{name}.exe").write_bytes(name.encode())
+
+    monkeypatch.setattr(build_windows.subprocess, "run", run)
+    monkeypatch.setattr(build_windows, "copy_support_files", lambda *a: None)
+    monkeypatch.setattr(build_windows, "bundle_ffmpeg", lambda *a, **k: [])
+    build_windows.build_bundle(source, output, tmp_path / "icon.ico", collect_packages=[])
+
+    assert len(commands) == 2
+    assert "--console" in commands[0]
+    assert "--windowed" in commands[1]
+    assert "--console" not in commands[1]
+    assert (output / "uwcc.exe").read_bytes() == b"uwcc"
+    assert (output / "uwcc-gui.exe").read_bytes() == b"uwcc-gui"
 
 
 def test_chocolatey_and_scoop_shims_resolve_to_real_binaries(build_windows, tmp_path):

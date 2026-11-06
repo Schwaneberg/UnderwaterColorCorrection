@@ -72,6 +72,12 @@ jobs:
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
           $exe = Resolve-Path "dist/windows/uwcc/uwcc.exe"
+            foreach ($entry in @{ "uwcc-gui.exe" = 2; "uwcc.exe" = 3 }.GetEnumerator()) {
+              $bytes = [IO.File]::ReadAllBytes((Resolve-Path "dist/windows/uwcc/$($entry.Key)"))
+              $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+              $subsystem = [BitConverter]::ToUInt16($bytes, $peOffset + 24 + 68)
+              if ($subsystem -ne $entry.Value) { throw "Unexpected Windows subsystem for $($entry.Key): $subsystem" }
+            }
           if (-not (Test-Path "dist/windows/uwcc/bin/ffmpeg.exe")) { throw "Bundled ffmpeg.exe missing" }
           if (-not (Test-Path "dist/windows/uwcc/bin/ffprobe.exe")) { throw "Bundled ffprobe.exe missing" }
           if (-not (Get-ChildItem "dist/windows/uwcc_*.msix" -ErrorAction SilentlyContinue)) { throw "MSIX package was not created" }

@@ -5,6 +5,9 @@ import io
 import json
 from pathlib import Path
 import sys
+import shutil
+import subprocess
+import textwrap
 
 import pytest
 
@@ -85,3 +88,45 @@ def test_full_preparation_converts_after_downloads(prepare, tmp_path, monkeypatc
     monkeypatch.setitem(sys.modules, "convert_models", SimpleNamespace(export=export))
     prepare.main(["--models-dir", str(tmp_path)])
     assert events[-2:] == list(prepare.WEIGHTS)
+
+
+@pytest.mark.parametrize("script", ["prepare_models.py", "prepare_gpu_denoise.py"])
+def test_preparation_finds_sibling_converter_in_isolated_python(tmp_path, script):
+    tools = tmp_path / "installed app/tools"
+    tools.mkdir(parents=True)
+    source = Path(__file__).resolve().parents[1] / "tools" / script
+    shutil.copy2(source, tools / script)
+    # Keep this regression independent of downloads and conversion dependencies.
+    (tools / "convert_models.py").write_text(
+        "def export(kind, source, output):\n"
+        "    output.mkdir(parents=True)\n"
+        "    (output / 'converted').write_text(kind)\n"
+        "def load_module(name, path):\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    models = tmp_path / "user models"
+    code = textwrap.dedent("""
+        import runpy, sys, types
+        from pathlib import Path
+        script, models = sys.argv[1:]
+        assert str(Path(script).parent) not in sys.path
+        sys.modules['numpy'] = types.ModuleType('numpy')
+        scope = runpy.run_path(script)
+        if Path(script).name == 'prepare_models.py':
+            def download(url, path, checksum=None):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'cached weights')
+            scope['main'].__globals__['download'] = download
+            scope['main'](['--models-dir', models])
+        else:
+            assert callable(scope['load_module'])
+    """)
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", code, str(tools / script), str(models)],
+        cwd=tmp_path, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    if script == "prepare_models.py":
+        for kind in ("udnet", "fastdvdnet"):
+            assert (models / kind / "converted").read_text() == kind
