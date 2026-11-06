@@ -9,13 +9,13 @@
             "type": "debugpy",
             "request": "launch",
             "module": "uwcc",
-            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "python": "${workspaceFolder}/.venv-build/Scripts/python.exe",
             "subProcess": false,
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "env": {
-                "VIRTUAL_ENV": "${workspaceFolder}/.venv",
-                "PATH": "${workspaceFolder}/.venv/Scripts;${env:PATH}"
+                "VIRTUAL_ENV": "${workspaceFolder}/.venv-build",
+                "PATH": "${workspaceFolder}/.venv-build/Scripts;${env:PATH}"
             }
         }
     ]

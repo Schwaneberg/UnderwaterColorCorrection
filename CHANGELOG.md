@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 — 2026-11-06
+
+### Added
+
+- Automatically open AI model setup at startup when no local models are installed,
+  with guidance explaining the benefits and how to get started. Setup remains
+  optional; users can close the window and install models later.
+- Clearly label the full setup option as **Install all models (Full feature set,
+  best performance)**, list UDnet, FastDVDnet, and RightWayUp Max INT8, and warn
+  that this option requires the biggest download.
+
+### Fixed
+
+- Point the VS Code launch configuration at the existing `.venv-build` environment.
+
+### Validation
+
+- All 41 selected Windows packaging, model setup, execution runtime, provider,
+  GPU validation, and startup-condition tests passed.
+- The new setup features were manually tested and accepted by the maintainer.
+
 ## 0.3.3 — 2026-11-06
 
 ### Fixed

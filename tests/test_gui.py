@@ -3,6 +3,26 @@ import time
 import pytest
 
 
+@pytest.mark.parametrize("installed", [None, "enhance", "denoise", "orientation"])
+def test_startup_model_setup_only_when_no_models_installed(monkeypatch, installed):
+    from types import SimpleNamespace
+    from uwcc import gui, model_setup
+
+    models = {task: "manifest.json" if task == installed else None
+              for task in ("enhance", "denoise", "orientation")}
+    monkeypatch.setattr(model_setup, "model_status", lambda: {"models": models})
+    opened = []
+
+    def dialog(parent, first_run=False):
+        assert first_run
+        return SimpleNamespace(exec=lambda: opened.append(parent))
+
+    monkeypatch.setattr(gui, "ModelSetupDialog", dialog)
+    window = SimpleNamespace()
+    gui.MainWindow.setup_models_if_missing(window)
+    assert opened == ([window] if installed is None else [])
+
+
 @pytest.fixture
 def automatic_window(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path/"data"))

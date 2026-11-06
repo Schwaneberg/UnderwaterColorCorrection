@@ -1,3 +1,11 @@
+uwcc (0.4.0-1~ppa1) resolute; urgency=medium
+
+  * Guide users through AI model setup on startup when no models are installed.
+  * Clarify full model installation, including RightWayUp Max INT8 and download size.
+  * Fix the VS Code development launch environment.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Fri, 06 Nov 2026 12:00:00 +0100
+
 uwcc (0.3.3-1~ppa1) resolute; urgency=medium
 
   * Release 0.3.3 with Windows packaging and model preparation fixes.

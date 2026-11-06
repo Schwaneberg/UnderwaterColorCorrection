@@ -275,7 +275,7 @@ class BatchDialog(W.QDialog):
 
 
 class ModelSetupDialog(W.QDialog):
-    def __init__(self, window):
+    def __init__(self, window, first_run=False):
         super().__init__(window)
         from .model_setup import SETUP_ACTIONS
         self.setWindowTitle("Prepare local AI models")
@@ -283,6 +283,10 @@ class ModelSetupDialog(W.QDialog):
         self.window, self.worker = window, None
         layout = W.QVBoxLayout(self)
         intro = W.QLabel(
+            ("No local AI models are installed yet. Set them up to enable AI underwater enhancement, "
+             "temporal denoising, and automatic orientation. Choose Install all models below for the full feature set, "
+             "then click Prepare models. You can also close this window and set up models later from AI models.\n\n"
+             if first_run else "") +
             "Download pinned upstream weights, verify SHA-256 checksums, and prepare local ONNX models.\n"
             "Model setup is an explicit user action; UWCC never downloads weights automatically."
         )
@@ -321,6 +325,14 @@ class ModelSetupDialog(W.QDialog):
         self.execution_group.buttonToggled.connect(self._execution_changed)
         self._execution_changed()
         layout.addWidget(self.action_combo)
+        self.all_models_hint = W.QLabel(
+            "Includes UDnet, FastDVDnet, and RightWayUp Max INT8 for the full feature set and best performance.\n"
+            "Warning: Installing all models requires the biggest download."
+        )
+        self.all_models_hint.setWordWrap(True)
+        self.action_combo.currentIndexChanged.connect(self._action_changed)
+        self._action_changed()
+        layout.addWidget(self.all_models_hint)
         self.bootstrap_converter = W.QCheckBox("Install the selected execution runtime and model converter if missing")
         self.bootstrap_converter.setChecked(True)
         self.bootstrap_converter.setToolTip(
@@ -346,6 +358,9 @@ class ModelSetupDialog(W.QDialog):
 
     def execution_backend(self):
         return next(key for key, button in self.execution_buttons.items() if button.isChecked())
+
+    def _action_changed(self, *args):
+        self.all_models_hint.setVisible(self.action_combo.currentData() == "all")
 
     def _execution_changed(self, *args):
         cuda = self.execution_backend() == "cuda"
@@ -1177,6 +1192,12 @@ class MainWindow(W.QMainWindow):
         self.model_dialog = ModelSetupDialog(self)
         self.model_dialog.exec()
 
+    def setup_models_if_missing(self):
+        from .model_setup import model_status
+        if not any(model_status()["models"].values()):
+            self.model_dialog = ModelSetupDialog(self, first_run=True)
+            self.model_dialog.exec()
+
     def models_prepared(self):
         from .neural import builtin_model
         self.statusBar().showMessage("Local AI models updated.")
@@ -1512,8 +1533,12 @@ def launch(path=None):
     window = MainWindow()
     app.setWindowIcon(window.windowIcon())
     window.show()
-    if path:
-        C.QTimer.singleShot(0, lambda: window.open_video(path=path))
-    else:
-        C.QTimer.singleShot(0, window.recover)
+    def startup():
+        window.setup_models_if_missing()
+        if path:
+            window.open_video(path=path)
+        else:
+            window.recover()
+
+    C.QTimer.singleShot(0, startup)
     return app.exec()

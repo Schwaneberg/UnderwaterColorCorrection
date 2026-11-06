@@ -23,7 +23,7 @@ SCRIPTS = {
 
 SETUP_ACTIONS = {
     "runtime": "Install or switch execution runtime only",
-    "all": "Prepare all standard models (UDnet, FastDVDnet, RightWayUp)",
+    "all": "Install all models (Full feature set, best performance)",
     "prepare": "Prepare enhancement & denoise models (UDnet + FastDVDnet)",
     "prepare-orientation": "Download orientation model (RightWayUp Max INT8)",
     "download-only": "Download UDnet & FastDVDnet weights only (no conversion)",
