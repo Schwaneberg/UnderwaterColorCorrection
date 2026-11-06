@@ -17,6 +17,28 @@ def test_probe_and_seek(clip):
     assert read_frame(info, .8, 160).shape == (90, 160, 3)
 
 
+def test_preview_thread_limits_apply_to_decode_and_timestamps(clip, monkeypatch):
+    from contextlib import closing
+    from uwcc import media
+
+    info = probe(clip)
+    monkeypatch.setattr(media, "cpu_threads", lambda: 8)
+    calls = []
+    popen = media.subprocess.Popen
+
+    def record(args, **kwargs):
+        calls.append(args)
+        return popen(args, **kwargs)
+
+    monkeypatch.setattr(media.subprocess, "Popen", record)
+    with media.FrameReader(info, max_width=160, thread_limit=4) as reader:
+        assert next(iter(reader)).shape == (90, 160, 3)
+    with closing(media.frame_timestamps(info, thread_limit=4)) as times:
+        assert next(times) == 0
+    assert len(calls) == 2
+    assert all(args[args.index("-threads")+1] == "4" for args in calls)
+
+
 @pytest.mark.parametrize("profile,extension", [("h264", ".mp4"), ("ffv1", ".mkv"), ("prores", ".mov"), ("dnxhr", ".mov"), ("hevc", ".mp4")])
 def test_export_audio_frames_metadata(clip, tmp_path, profile, extension):
     info = probe(clip)

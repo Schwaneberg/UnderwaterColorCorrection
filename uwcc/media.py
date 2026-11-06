@@ -148,7 +148,7 @@ def proxy_size(info, max_width):
 class FrameReader:
     """Read RGB48LE frames while a watcher makes blocked pipe reads cancelable."""
 
-    def __init__(self, info, max_width=None, start=0, sample_rate=None, cancel=None, single=False, finishing=None, stabilization_plan=None, progress=None, decoder=None):
+    def __init__(self, info, max_width=None, start=0, sample_rate=None, cancel=None, single=False, finishing=None, stabilization_plan=None, progress=None, decoder=None, thread_limit=None):
         self.width, self.height = proxy_size(info, max_width)
         self.cancel = cancel or threading.Event()
         from .codecs import decoder as select_decoder
@@ -178,6 +178,8 @@ class FrameReader:
         self.frames = self.denoise_frames = None
         self.errors = tempfile.TemporaryFile()
         threads = cpu_threads()
+        if thread_limit is not None:
+            threads = max(1, min(threads, thread_limit))
         args = [executable("ffmpeg"), "-nostdin", "-v", "error", "-threads", str(threads),
                 "-filter_threads", str(min(4, threads))]
         if start:
@@ -295,10 +297,13 @@ def prepare_frame(frame, info, profile):
     return frame
 
 
-def frame_timestamps(info, cancel=None, start=None):
+def frame_timestamps(info, cancel=None, start=None, thread_limit=None):
     """Yield presentation timestamps without retaining the clip in memory."""
     cancel = cancel or threading.Event()
-    args = [executable("ffprobe"), "-v", "error", "-threads", str(cpu_threads()),
+    threads = cpu_threads()
+    if thread_limit is not None:
+        threads = max(1, min(threads, thread_limit))
+    args = [executable("ffprobe"), "-v", "error", "-threads", str(threads),
             "-select_streams", str(info.video_index)]
     if start:
         args += ["-read_intervals", f"{max(0, start+info.start)}%"]

@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from contextlib import closing
+from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from .analysis import analyze
 from .color import correct, decode, encode
 from .errors import Cancelled
 from .jobs import BatchQueue
-from .media import FrameReader, frame_timestamps, prepare_frame, probe, read_frame
+from .media import FrameReader, cpu_threads, frame_timestamps, prepare_frame, probe, read_frame
 from .project import (BUILTINS, CONTROLS, FILTERS, OUTPUTS, PROFILES, Grade, Project,
                       clone, fingerprint, load_preset, save_preset, user_directory)
 from .qt import QtCore as C, QtGui as G, QtWidgets as W, Signal, multimedia
@@ -48,6 +49,25 @@ class Worker(C.QThread):
 def qimage(array):
     raw = np.ascontiguousarray(np.clip(array*255, 0, 255), dtype=np.uint8)
     return G.QImage(raw.data, raw.shape[1], raw.shape[0], raw.strides[0], G.QImage.Format.Format_RGB888).copy()
+
+
+def preview_original(raw, profile):
+    # Rec.709 is already in the viewer's display space. Avoid a redundant
+    # transfer/matrix/gamut round trip on every playback and scrub frame.
+    if profile == "rec709":
+        return raw
+    return encode(decode(raw, profile), "rec709", True)
+
+
+def preview_correct(raw, grade, timestamp, analysis, executor, workers):
+    values = grade.at(timestamp)
+    # Spatial filters need neighboring rows. Keep their existing full-frame
+    # evaluation so parallel processing cannot introduce stripe boundaries.
+    if workers <= 1 or raw.shape[0] < workers*16 or values["dehaze"] or values["sharpness"]:
+        return correct(raw, grade, timestamp, analysis, preview=True)
+    def stripe(part):
+        return correct(part, grade, timestamp, analysis, preview=True)
+    return np.concatenate(list(executor.map(stripe, np.array_split(raw, workers))), axis=0)
 
 
 class Viewer(W.QWidget):
@@ -164,8 +184,11 @@ class Playback(C.QThread):
     def run(self):
         try:
             beginning = None
-            with closing(frame_timestamps(self.info, self.cancel, start=self.start_time)) as times, FrameReader(
-                self.info, max_width=640, start=self.start_time, cancel=self.cancel
+            workers = min(4, cpu_threads())
+            with ThreadPoolExecutor(max_workers=workers) as executor, closing(frame_timestamps(
+                self.info, self.cancel, start=self.start_time, thread_limit=4
+            )) as times, FrameReader(
+                self.info, max_width=640, start=self.start_time, cancel=self.cancel, thread_limit=4
             ) as reader:
                 for raw in reader:
                     if self.cancel.is_set():
@@ -173,9 +196,15 @@ class Playback(C.QThread):
                     timestamp = next(times, None)
                     if timestamp is None:
                         return
+                    if (beginning is not None and
+                            timestamp-start < time.monotonic()-beginning-1/float(self.info.fps)):
+                        # Keep audio and the presentation clock moving together.
+                        # Decode timestamps in lockstep, but don't color frames
+                        # whose display deadline has already passed.
+                        continue
                     raw = prepare_frame(raw, self.info, self.project.grade.input_profile)
-                    rgb = correct(raw, self.project.grade, timestamp, self.project.analysis, preview=True)
-                    original = encode(decode(raw, self.project.grade.input_profile), "rec709", self.project.grade.input_profile != "rec709")
+                    rgb = preview_correct(raw, self.project.grade, timestamp, self.project.analysis, executor, workers)
+                    original = preview_original(raw, self.project.grade.input_profile)
                     if beginning is None:
                         beginning, start = time.monotonic(), timestamp
                         self.audio_start.emit(timestamp)
@@ -1360,7 +1389,7 @@ class MainWindow(W.QMainWindow):
             if snapshot.grade.input_profile == "auto":
                 snapshot.grade.input_profile = "rec709"
             raw = prepare_frame(raw, info, snapshot.grade.input_profile)
-            original = encode(decode(raw, snapshot.grade.input_profile), "rec709", snapshot.grade.input_profile != "rec709")
+            original = preview_original(raw, snapshot.grade.input_profile)
             return original, correct(raw, snapshot.grade, position, snapshot.analysis, preview=True)
         worker = Worker(preview, self)
         self.preview_worker = worker

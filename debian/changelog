@@ -1,3 +1,11 @@
+uwcc (0.4.1-1~ppa1) resolute; urgency=medium
+
+  * Speed up Rec.709 previews and parallelize pointwise preview correction.
+  * Bound preview decoder threads and skip overdue frames to prevent drift.
+  * Add preview performance benchmarks and regression coverage.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Fri, 06 Nov 2026 22:00:00 +0100
+
 uwcc (0.4.0-1~ppa1) resolute; urgency=medium
 
   * Guide users through AI model setup on startup when no models are installed.

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.1 — 2026-11-06
+
+### Improved
+
+- Avoid a redundant color-space round trip for the original Rec.709 preview.
+- Process preview color correction across up to four CPU workers. Keep dehaze
+  and sharpness on the full frame to preserve spatial filtering.
+- Limit preview decoding and timestamp extraction to four threads to reduce CPU
+  contention. Export processing and thread settings are unchanged.
+- Skip overdue preview frames instead of accumulating delay against the
+  playback and audio clock.
+- Add reproducible preview benchmarks and performance documentation.
+
+### Validation and limitations
+
+- Playback, color, native-kernel parity, and selected media tests passed.
+- An offscreen preview test with a 1080p, 50 fps clip displayed 292 frames over
+  eight seconds of video in 8.34 seconds. Full 50 fps playback is not guaranteed;
+  manual adjustments and spatial filters can reduce throughput further.
+- Visible-window playback and audible synchronization still need manual checks.
+- The previously documented Windows variable-frame-rate export failures remain.
+
 ## 0.4.0 — 2026-11-06
 
 ### Added
