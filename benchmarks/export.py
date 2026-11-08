@@ -25,7 +25,7 @@ def main():
     parser.add_argument("--input-profile", choices=["rec709", "slog2", "slog3", "hlg", "pq"],
                         help="Input interpretation for --clip; required if metadata is ambiguous")
     parser.add_argument("--finishing", action="store_true",
-                        help="Also measure stabilization, denoise (strength 3), and both using C")
+                        help="Also measure stabilization, denoise (strength 3), and both (C when available)")
     parser.add_argument("--backend", choices=["both", "native", "numpy"], default="both",
                         help="Backends for full exports; defaults to both")
     parser.add_argument("--output-dir", type=Path, help="Keep exports here for visual comparison")
@@ -50,8 +50,10 @@ def main():
     elif args.finishing or args.output_dir or args.report:
         parser.error("Export options require --clip or --project")
     native = color._native
-    if native is None:
+    if native is None and args.backend == "native":
         parser.error("Build the C extension first: python3 setup.py build_ext --inplace")
+    if native is None:
+        print("Compiled kernels unavailable; benchmarking the NumPy fallback.", flush=True)
     if args.clip:
         start = perf_counter()
         project.analysis = analyze(info, project.grade)
@@ -67,14 +69,17 @@ def main():
     try:
         for name, operation in operations.items():
             timings = []
-            for backend in (None, native):
+            for backend in ((None, native) if native is not None else (None,)):
                 color._native = backend
                 operation()  # warm up
                 start = perf_counter()
                 for _ in range(args.repeats):
                     operation()
                 timings.append((perf_counter() - start) / args.repeats)
-            print(f"{name}: NumPy {timings[0]:.3f}s; C {timings[1]:.3f}s; {timings[0]/timings[1]:.2f}x", flush=True)
+            if native is None:
+                print(f"{name}: NumPy {timings[0]:.3f}s", flush=True)
+            else:
+                print(f"{name}: NumPy {timings[0]:.3f}s; C {timings[1]:.3f}s; {timings[0]/timings[1]:.2f}x", flush=True)
         if project:
             count, variable = frame_timing(info)
             print(f"Source: {info.width}×{info.height}, {count} frames, {info.duration:.3f}s, "
@@ -83,10 +88,13 @@ def main():
                          ("native", native, project.grade.stabilize, project.grade.denoise)]
             if args.backend != "both":
                 scenarios = [row for row in scenarios if row[0] == args.backend]
+            if native is None:
+                scenarios = [row for row in scenarios if row[0] == "numpy"]
             if args.finishing:
-                scenarios += [("native-stabilized", native, True, 0),
-                              ("native-denoised", native, False, 3),
-                              ("native-combined", native, True, 3)]
+                label = "native" if native is not None else "numpy"
+                scenarios += [(f"{label}-stabilized", native, True, 0),
+                              (f"{label}-denoised", native, False, 3),
+                              (f"{label}-combined", native, True, 3)]
             if args.output_dir:
                 args.output_dir.mkdir(parents=True, exist_ok=True)
             exports = nullcontext(args.output_dir) if args.output_dir else TemporaryDirectory(prefix="uwcc-benchmark-")

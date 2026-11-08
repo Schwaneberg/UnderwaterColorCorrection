@@ -138,6 +138,12 @@ unnecessary calculations; automatic gains stay in float32. H.264/HEVC use the
 `fast` encoding preset at the previous CRF settings (17/18), with at most eight
 encoder threads. Files may be larger than with the previous `medium` preset.
 
+The unreleased Rec.709 export optimization combines color LUT application and
+16-bit output conversion. It automatically prefers AVX2 on compatible CPUs and
+uses a scalar native fallback elsewhere. This fast path applies when manual
+finishing controls are neutral; other grades keep the existing processing path.
+Preview quality and encoder settings are unchanged.
+
 Package installation builds the extension when a compiler and Python development
 headers are available. For the distribution-package/source checkout workflow:
 
@@ -148,11 +154,21 @@ python3 -m benchmarks.export
 ```
 
 Build using the same Python interpreter used to launch UWCC. Without a compiled
-extension the application uses NumPy automatically. To compare complete exports,
+extension the application uses NumPy automatically. The NumPy LUT evaluator
+processes bounded float32 blocks to limit scratch memory when export workers
+overlap. On Windows, compiling the optional extension requires the MSVC C++
+tools and Windows SDK; installing the SDK alone does not provide a C++ compiler.
+To compare complete exports,
 run `python3 -m benchmarks.export --project dive.uwcc-project.json`; this creates
 temporary H.264 files and removes them afterward. Microbenchmarks isolate the
 kernels; actual export speed also depends on resolution, controls, codecs, and
 the source storage.
+
+The benchmark also runs without the extension using `--backend numpy` (the
+default selects NumPy automatically when compiled kernels are unavailable).
+Use `--backend native` to require and verify a compiled build. See the
+[C0045 export investigation](benchmarks/C0045-export.md) for a measured NumPy
+comparison on a 1080p camera clip.
 
 To benchmark a camera reference clip, including each finishing effect separately:
 

@@ -53,7 +53,10 @@ scripts for the actual dependency declarations.
   setup dialog, preview scopes, and undo/recovery interactions. Long operations
   use `QThread` workers; analysis is not isolated in a separate worker process.
 - `media.py` probes sources, prepares orientation/range, reads bounded 16-bit RGB
-  pipes, and extracts source timestamps through FFmpeg/ffprobe.
+  pipes, and extracts source timestamps through FFmpeg/ffprobe. Frame reads use
+  `readinto` into reusable uint16 scratch storage; yielded float frames own their
+  buffers. Windows raw-frame pipes have dedicated buffers capped at 1 MiB;
+  other platforms keep normal subprocess pipes.
 - `color.py`, `analysis.py`, and `enhance.py` share correction evaluation between
   preview and export. `neural.py` and `ml.py` validate and run optional models.
 - `render.py` performs full-resolution rendering, ordered parallel color work,
@@ -150,7 +153,11 @@ visible-window/audio synchronization are not certified.
 
 Export-only stabilization uses OpenCV background motion estimation, a
 seabed/lower-half or whole-frame region, and a fixed crop/zoom selected in a first
-pass. Conventional denoise uses FFmpeg `hqdn3d`; optional FastDVDnet uses a
+pass. Each spatial cell's feature detector receives a cropped proxy region plus
+a five-pixel neighborhood halo, and points are restored to full-proxy
+coordinates. This avoids repeated full-proxy corner-response calculations while
+retaining the existing detector parameters and per-cell feature quotas.
+Conventional denoise uses FFmpeg `hqdn3d`; optional FastDVDnet uses a
 five-frame window, tiles/halos, and repeated endpoint frames. Neural denoise
 currently requires Rec.709. A single future-window preparation worker overlaps
 decode/conversion with sequential inference. See [AI workflows](ai-workflow.md).
@@ -250,7 +257,21 @@ process RSS limit and excludes additional neural-window/network allocations.
 Codec pools normally use up to eight threads and filters up to four.
 Temporal processing precedes the ordered color-worker pool. The optional C
 extension accelerates tetrahedral LUT evaluation and fused SDR conversion;
-NumPy is the fallback. `UWCC_DENOISE_PREFETCH=0` disables denoise prefetch.
+the unreleased export path also fuses encoded Rec.709 LUT interpolation,
+strength blending, clamping, and uint16 quantization when manual controls are
+neutral. It selects AVX2 by default only after CPU AVX2/XSAVE and OS XMM/YMM
+state checks. A separately compiled AVX2 object is excluded from cross-object
+optimization; baseline native code stays compatible with non-AVX2 CPUs. The
+portable fused scalar path handles unsupported CPUs and vector tails. Non-x86
+targets build the scalar implementation. Manual finishing, log/HDR, zero
+strength, and missing/non-LUT analysis retain the original float graph.
+NumPy is the fallback. Its LUT interpolation uses blocks of at most 65,536
+pixels, float32 fractions/results, and direct tetrahedron-corner selection
+instead of full-frame sorting and float64 intermediates. Decoder normalization
+and output rounding also reuse their temporary arrays. These changes retain
+the color graph and encoder settings; measured differences are documented in
+[the C0045 report](benchmarks/C0045-export.md).
+`UWCC_DENOISE_PREFETCH=0` disables denoise prefetch.
 
 Repository benchmarks describe specific clips/machines, not general guarantees.
 Global RAM/disk budgets, deadline guarantees for all cancellation paths, GPU

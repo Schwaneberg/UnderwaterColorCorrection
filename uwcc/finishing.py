@@ -22,6 +22,27 @@ def opencv():
     return cv2
 
 
+def _regional_features(cv, gray, x0, y0, x1, y1):
+    """Retain masked detector behavior without eight full-proxy response maps."""
+    if x1 <= x0 or y1 <= y0:
+        return None
+    # blockSize=7 (radius 3), default Sobel aperture=3 (radius 1), and
+    # 3x3 nonmaximum suppression (radius 1). Keep their complete neighborhood
+    # even at cell boundaries, then restore full-proxy point coordinates.
+    halo = 5
+    height, width = gray.shape
+    left, top = max(0, x0-halo), max(0, y0-halo)
+    right, bottom = min(width, x1+halo), min(height, y1+halo)
+    region = gray[top:bottom, left:right]
+    mask = np.zeros(region.shape, dtype=np.uint8)
+    mask[y0-top:y1-top, x0-left:x1-left] = 255
+    points = cv.goodFeaturesToTrack(region, maxCorners=40, qualityLevel=.008,
+                                   minDistance=5, mask=mask, blockSize=7)
+    if points is not None:
+        points += np.array([left, top], dtype=np.float32)
+    return points
+
+
 class BackgroundStabilizer:
     """Robust background tracking with a smoothed translation/rotation path.
 
@@ -61,10 +82,8 @@ class BackgroundStabilizer:
         # Distribute features spatially so one diver does not own the fit.
         for y0, y1 in zip(np.linspace(top, .95, 3)[:-1], np.linspace(top, .95, 3)[1:]):
             for x0, x1 in zip(np.linspace(.05, .95, 5)[:-1], np.linspace(.05, .95, 5)[1:]):
-                mask = np.zeros_like(gray)
-                mask[int(y0*h):int(y1*h), int(x0*w):int(x1*w)] = 255
-                p = cv.goodFeaturesToTrack(self.previous, maxCorners=40, qualityLevel=.008,
-                                           minDistance=5, mask=mask, blockSize=7)
+                p = _regional_features(cv, self.previous,
+                                       int(x0*w), int(y0*h), int(x1*w), int(y1*h))
                 if p is not None:
                     points.append(p)
         motion = np.eye(3)

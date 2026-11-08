@@ -17,8 +17,8 @@ def test_parallel_color_is_bounded_ordered_and_concurrent(monkeypatch):
         if seconds < 2:
             threads.add(threading.get_ident())
             barrier.wait(timeout=3)
-        return frame
-    monkeypatch.setattr(module, "correct", fake)
+        return np.rint(frame*65535).astype("<u2")
+    monkeypatch.setattr(module, "correct_rgb48", fake)
     read = []
     def frames():
         for i in range(12):
@@ -68,7 +68,7 @@ def test_ready_color_result_is_not_held_until_queue_fills(monkeypatch):
             result.set_result(fn(*args))
             return result
     monkeypatch.setattr(module, "ThreadPoolExecutor", ImmediateExecutor)
-    monkeypatch.setattr(module, "correct", lambda frame, *_: frame)
+    monkeypatch.setattr(module, "correct_rgb48", lambda frame, *_: np.rint(frame*65535).astype("<u2"))
     read = []
     def frames():
         for i in range(10):

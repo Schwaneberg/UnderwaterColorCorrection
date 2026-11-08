@@ -222,23 +222,47 @@ def apply_lut(rgb, lut, uniform=False):
         result = np.empty_like(rgb)
         _native.apply_lut(rgb, lut, result, n, uniform)
         return result
+    return _numpy_lut(rgb, lut, uniform)
+
+
+def _numpy_lut(rgb, lut, uniform):
+    """Bound interpolation scratch space independently of export resolution."""
+    shape = rgb.shape
+    pixels = np.asarray(rgb, dtype=np.float32).reshape(-1, 3)
+    cube = np.asarray(lut, dtype=np.float32).reshape(-1, 3)
+    result = np.empty_like(pixels)
     n = lut.shape[0]
-    coords = np.clip(rgb if uniform else np.log2(1+np.maximum(rgb, 0))/np.log2(17), 0, 1)*(n-1)
-    indices = np.minimum(coords.astype(np.int32), n-2)
-    # Log shaper chooses cells; interpolate in scene-linear color within each
-    # cell. This preserves identity and every linear fit exactly.
-    knots = np.linspace(0, 1, n) if uniform else 2 ** (np.linspace(0, 1, n)*np.log2(17))-1
-    f = np.clip((rgb-knots[indices])/(knots[indices+1]-knots[indices]), 0, 1)
-    order = np.argsort(-f, axis=-1, kind="stable")
-    ordered = np.take_along_axis(f, order, axis=-1)
-    result = lut[indices[..., 0], indices[..., 1], indices[..., 2]]*(1-ordered[..., 0, None])
-    cursor = indices.copy()
-    for i in range(3):
-        increment = np.eye(3, dtype=np.int32)[order[..., i]]
-        cursor += increment
-        weight = ordered[..., i] - (ordered[..., i+1] if i < 2 else 0)
-        result += lut[cursor[..., 0], cursor[..., 1], cursor[..., 2]] * weight[..., None]
-    return result
+    strides = np.array([n*n, n, 1], dtype=np.int32)
+    diagonal = int(strides.sum())
+    knots = 2 ** (np.linspace(0, 1, n)*np.log2(17))-1 if not uniform else None
+    # Large whole-frame arrays, especially float64 fractions and per-pixel
+    # argsort indices, overwhelm caches when several export workers overlap.
+    for start in range(0, len(pixels), 65536):
+        values = pixels[start:start+65536]
+        coords = np.clip(values if uniform else np.log2(1+np.maximum(values, 0))/np.log2(17), 0, 1)*(n-1)
+        indices = np.minimum(coords.astype(np.int32), n-2)
+        if uniform:
+            fractions = coords-indices.astype(np.float32)
+        else:
+            # Log shaper chooses cells; interpolate linearly within each cell,
+            # using the same double-precision knots as the compiled kernel.
+            fractions = np.clip((values-knots[indices])/(knots[indices+1]-knots[indices]), 0, 1).astype(np.float32)
+        r, g, b = fractions.T
+        # Only the largest/smallest axis is needed for four tetrahedron corners.
+        # Equality keeps the original stable R,G,B order, including neutral ties.
+        first = np.where(r >= g, np.where(r >= b, 0, 2), np.where(g >= b, 1, 2))
+        last = np.where(b <= g, np.where(b <= r, 2, 0), np.where(g <= r, 1, 0))
+        rows = np.arange(len(values))
+        high = fractions[rows, first, None]
+        middle = fractions[rows, 3-first-last, None]
+        low = fractions[rows, last, None]
+        base = indices @ strides
+        block = cube[base]*(1-high)
+        block += cube[base+strides[first]]*(high-middle)
+        block += cube[base+diagonal-strides[last]]*(middle-low)
+        block += cube[base+diagonal]*low
+        result[start:start+len(values)] = block
+    return result.reshape(shape)
 
 
 def identity_lut(size=17):
@@ -283,3 +307,31 @@ def correct(encoded, grade, seconds=0, analysis=None, preview=False):
         detail = result-box_blur(result, 1)
         result += np.where(np.abs(detail) > .008, np.clip(detail, -.05, .05), 0)*p["sharpness"]/50
     return np.clip(np.nan_to_num(result), 0, 1).astype(np.float32)
+
+
+def correct_rgb48(encoded, grade, seconds=0, analysis=None):
+    """Export-only fused Rec.709 path, preserving the full graph as fallback."""
+    if (_native is not None and hasattr(_native, "lut_rgb48") and analysis
+            and grade.input_profile == "rec709" and grade.output_profile == "rec709"):
+        p = grade.at(seconds)
+        neutral = all(p[k] == v for k, v in {
+            "temperature": 0, "tint": 0, "exposure": 0, "contrast": 0,
+            "highlights": 0, "shadows": 0, "black_point": 0, "saturation": 100,
+            "hue": 0, "dehaze": 0, "sharpness": 0}.items())
+        # Strength zero follows the original color graph, not an identity
+        # shortcut; active manual controls and log/HDR also keep their semantics.
+        if p["strength"] and neutral:
+            from .enhance import cube_at
+            cube = cube_at(analysis, seconds)
+            if cube is not None:
+                frame = np.require(encoded, dtype=np.float32, requirements=["C", "A"])
+                if frame.ndim < 1 or frame.shape[-1] != 3:
+                    raise ValueError("Expected an RGB frame with three channels")
+                cube = np.require(cube, dtype=np.float32, requirements=["C", "A"])
+                output = np.empty(frame.shape, dtype=np.uint16)
+                _native.lut_rgb48(frame, cube, output, cube.shape[0], p["strength"]/100)
+                return output.astype("<u2", copy=False)
+    result = correct(encoded, grade, seconds, analysis)
+    scaled = result*65535
+    np.rint(scaled, out=scaled)
+    return scaled.astype("<u2")

@@ -41,6 +41,9 @@ def test_windows_source_snapshot_excludes_binaries_and_models(build_windows, tmp
     names = [
         "pyproject.toml",
         "uwcc/gui.py",
+        "uwcc/_native_avx2.c",
+        "uwcc/_native_rgb48.h",
+        "MANIFEST.in",
         "models/udnet/manifest.json",
         "models/udnet/model.onnx",
         "models/.sources/UDnet.py",
@@ -57,6 +60,9 @@ def test_windows_source_snapshot_excludes_binaries_and_models(build_windows, tmp
     assert set(build_windows.source_files(tmp_path)) == {
         Path("pyproject.toml"),
         Path("uwcc/gui.py"),
+        Path("uwcc/_native_avx2.c"),
+        Path("uwcc/_native_rgb48.h"),
+        Path("MANIFEST.in"),
         Path("models/udnet/manifest.json"),
     }
 

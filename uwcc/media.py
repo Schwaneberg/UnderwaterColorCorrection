@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from .errors import Cancelled, UWCCError
+from ._frame_pipe import frame_process
 
 NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
 
@@ -204,8 +205,8 @@ class FrameReader:
         if single:
             args += ["-frames:v", "1"]
         args += ["-threads", "1", "-f", "rawvideo", "pipe:1"]
-        self.process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                        stderr=self.errors, **NO_WINDOW)
+        self.process = frame_process(args, "stdout", buffer_bytes=self.width*self.height*6,
+                                     stdin=subprocess.DEVNULL, stderr=self.errors, **NO_WINDOW)
         self.watcher = threading.Thread(target=self._watch, daemon=True)
         self.watcher.start()
 
@@ -228,27 +229,36 @@ class FrameReader:
         return self.frames
 
     def _decoded(self):
-        nbytes = self.width*self.height*6
-        while True:
-            if self.cancel.is_set():
-                raise Cancelled("Operation canceled.")
-            raw = bytearray()
-            while len(raw) < nbytes:
-                chunk = self.process.stdout.read(nbytes-len(raw))
-                if not chunk:
-                    break
-                raw.extend(chunk)
-            if not raw:
+        raw = np.empty((self.height, self.width, 3), dtype="<u2")
+        view = memoryview(raw).cast("B")
+        nbytes = len(view)
+        try:
+            while True:
                 if self.cancel.is_set():
                     raise Cancelled("Operation canceled.")
-                code = self.process.wait()
-                if code:
-                    self.errors.seek(0)
-                    raise UWCCError(self.errors.read()[-6000:].decode("utf-8", "replace"))
-                return
-            if len(raw) != nbytes:
-                raise UWCCError("Decoder returned an incomplete video frame.")
-            yield np.frombuffer(raw, dtype="<u2").reshape(self.height, self.width, 3).astype(np.float32)/65535
+                offset = 0
+                while offset < nbytes:
+                    count = self.process.stdout.readinto(view[offset:])
+                    if not count:
+                        break
+                    offset += count
+                if self.cancel.is_set():
+                    raise Cancelled("Operation canceled.")
+                if not offset:
+                    code = self.process.wait()
+                    if code:
+                        self.errors.seek(0)
+                        raise UWCCError(self.errors.read()[-6000:].decode("utf-8", "replace"))
+                    return
+                if offset != nbytes:
+                    raise UWCCError("Decoder returned an incomplete video frame.")
+                # Each yielded float frame owns its storage. Only the uint16
+                # scratch buffer is reused, so queued/temporal frames stay valid.
+                frame = raw.astype(np.float32)
+                frame /= 65535
+                yield frame
+        finally:
+            view.release()
 
     def _stop_decode(self):
         if self.process.poll() is None:

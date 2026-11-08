@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.5.0 — 2026-11-08
+
+### Performance
+
+- Read decoded RGB48 directly into a reusable uint16 scratch buffer with
+  `readinto`, eliminating the temporary bytes-to-bytearray copy. Yielded float
+  frames retain independent storage. Windows frame pipes use dedicated buffers
+  capped at 1 MiB; other platforms retain ordinary subprocess pipes.
+- On C0045, the matched stabilized export improved from 63.47 to 50.56 seconds
+  with identical MP4 bytes. The actual integrated path completed in 48.24
+  seconds; see [raw-copy measurements](docs/benchmarks/C0045-raw-copies.md).
+- Add a fused Rec.709 export kernel combining LUT interpolation, correction
+  strength, clamping, and RGB48 quantization. AVX2 is selected by default after
+  CPU/OS capability checks; unsupported CPUs use the portable fused scalar path.
+  Manual finishing, log/HDR, zero strength, and missing/non-LUT analysis retain
+  their existing correction graph. Preview behavior is unchanged.
+- Compile AVX2 separately from baseline native code, disable cross-object
+  optimization for its kernel, and include native sources/headers in source
+  distributions. Ubuntu and Windows CI now build and exercise native kernels.
+- Detect stabilization features in cropped proxy regions with a neighborhood
+  halo, retaining spatial quotas and full-proxy point coordinates. Add parity
+  tests for cell/image boundaries, scene cuts, crop zoom, and warped pixels.
+  On C0045, motion analysis improved from 28.16 to 13.25 seconds and stabilized
+  export from 99.98 to 90.31 seconds; the output MP4 was byte-identical.
+- Reduce NumPy LUT interpolation memory traffic with bounded float32 blocks and
+  direct tetrahedron-corner selection. Reuse decode-normalization and
+  export-rounding buffers. Encoder settings and native LUT kernels are unchanged.
+- Allow export benchmarks to run without the optional C extension; an explicit
+  `--backend native` still requires a compiled module.
+- On a 51-frame C0045 camera sample, NumPy H.264 export improved from 27.27 to
+  16.38 seconds (40% less time). The complete optimized 1,032-frame clip exported
+  in 137.08 seconds. See [the benchmark report](docs/benchmarks/C0045-export.md)
+  for scope, numerical differences, and limitations.
+- After installing MSVC and compiling the existing C extension, the same full
+  clip exported in 84.66 seconds (38% less time than optimized NumPy). This is
+  the benefit of enabling existing kernels, not a change to their LUT algorithm.
+
+### Validation
+
+- Production default AVX2 exported stabilized C0045 in 59.90 seconds with a
+  byte-identical MP4 compared with the earlier 90.84-second reference export.
+  Forced scalar calls and an independently built scalar-only module matched
+  AVX2 output. Linux execution remains for CI.
+- Windows `.venv` full suite with compiled kernels: 302 passed, 15 skipped.
+  Frame-pipe tests cover large transfers, EOF, startup cleanup, partial reads,
+  cancellation, and independent frame ownership.
+  LUT reference tests cover uniform/log interpolation, ties, edges, and block
+  boundaries. Six real color frames differ by at most one 16-bit code value
+  before encoding. Stabilization tests retain legacy feature points, motion,
+  crop zoom, and synthetic warped pixels.
+
 ## 0.4.3 — 2026-11-08
 
 ### Fixed

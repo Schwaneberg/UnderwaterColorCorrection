@@ -71,3 +71,42 @@ def test_analysis_gains_keep_frame_graph_float32():
     assert matrix.dtype == np.float32
     rgb = np.ones((8, 8, 3), dtype=np.float32)
     assert (rgb @ matrix).dtype == np.float32
+
+
+def _reference_tetrahedral(rgb, lut, uniform):
+    """Original full-array interpolation, independent of the block evaluator."""
+    n = lut.shape[0]
+    coords = np.clip(rgb if uniform else np.log2(1+np.maximum(rgb, 0))/np.log2(17), 0, 1)*(n-1)
+    indices = np.minimum(coords.astype(np.int32), n-2)
+    knots = np.linspace(0, 1, n) if uniform else 2**(np.linspace(0, 1, n)*np.log2(17))-1
+    fractions = np.clip((rgb-knots[indices])/(knots[indices+1]-knots[indices]), 0, 1)
+    order = np.argsort(-fractions, axis=-1, kind="stable")
+    weights = np.take_along_axis(fractions, order, axis=-1)
+    result = lut[indices[..., 0], indices[..., 1], indices[..., 2]]*(1-weights[..., 0, None])
+    cursor = indices.copy()
+    for axis in range(3):
+        cursor += np.eye(3, dtype=np.int32)[order[..., axis]]
+        weight = weights[..., axis]-(weights[..., axis+1] if axis < 2 else 0)
+        result += lut[cursor[..., 0], cursor[..., 1], cursor[..., 2]]*weight[..., None]
+    return result
+
+
+@pytest.mark.parametrize("uniform", [False, True])
+@pytest.mark.parametrize("size", [2, 17, 33])
+def test_numpy_lut_blocks_preserve_reference_at_ties_edges_and_boundaries(monkeypatch, uniform, size):
+    from uwcc import color
+    monkeypatch.setattr(color, "_native", None)
+    rng = np.random.default_rng(41)
+    # More than one block; noncontiguous float64 input, out-of-range channels,
+    # all six axis orderings, and equal fractions on the neutral axis.
+    rgb = rng.uniform(-.2, 1.2 if uniform else 18, (257, 257, 3))
+    rgb[0] = np.linspace(0, 1 if uniform else 16, 257)[:, None]
+    rgb[1, :6] = np.array([[.2, .5, .8], [.2, .8, .5], [.5, .2, .8],
+                           [.5, .8, .2], [.8, .2, .5], [.8, .5, .2]])
+    rgb = rgb[:, ::-1]
+    lut = rng.uniform(-.1, 2, (size, size, size, 3)).astype(np.float32)
+    reference = _reference_tetrahedral(rgb, lut, uniform)
+    output = apply_lut(rgb, lut, uniform)
+    assert output.dtype == np.float32
+    assert output.shape == rgb.shape
+    assert np.allclose(output, reference, atol=2e-5, rtol=0)

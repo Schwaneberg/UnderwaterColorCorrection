@@ -13,8 +13,9 @@ from pathlib import Path
 
 import numpy as np
 
-from .color import correct
+from .color import correct_rgb48
 from .errors import Cancelled, UWCCError
+from ._frame_pipe import frame_process
 from .media import FrameReader, executable, frame_timestamps, frame_timing, prepare_frame, probe, run, NO_WINDOW, cpu_threads
 from .project import fingerprint
 
@@ -45,8 +46,8 @@ def corrected_frames(reader, info, project, times, cancel, workers):
     def process(index, frame):
         if cancel.is_set():
             raise Cancelled("Export canceled.")
-        result = correct(prepare_frame(frame, info, project.grade.input_profile), project.grade, times[index], project.analysis)
-        return np.rint(result*65535).astype("<u2")
+        return correct_rgb48(prepare_frame(frame, info, project.grade.input_profile),
+                             project.grade, times[index], project.analysis)
     pending = deque()
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="uwcc-color") as pool:
         try:
@@ -163,7 +164,8 @@ def render(project, destination, profile="h264", cancel=None, progress=lambda *_
         with tempfile.TemporaryFile() as errors:
             # A fixed relative sendcmd filename avoids filter-language escaping
             # of Windows drive letters and output folders containing quotes.
-            process = subprocess.Popen(args, cwd=directory, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errors, **NO_WINDOW)
+            process = frame_process(args, "stdin", buffer_bytes=info.width*info.height*6,
+                                    cwd=directory, stdout=subprocess.DEVNULL, stderr=errors, **NO_WINDOW)
             stop_watch = threading.Event()
 
             def watch():

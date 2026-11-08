@@ -67,6 +67,20 @@ native DLLs such as `DirectML.dll`). Override with `--allow-missing-vision` /
 `--allow-missing-ml`. Pass `--require-native` to fail if the `uwcc._native`
 C extension does not compile.
 
+The unreleased native export kernel builds AVX2 in a separate object on x86
+targets. The package selects it automatically only when both CPU and OS support
+AVX2; other CPUs and ARM64 use the fused scalar fallback. The whole application
+is not compiled with AVX2 requirements. After building, verify the selected path
+with the same interpreter:
+
+```powershell
+.venv\Scripts\python.exe -c "from uwcc import _native; print(_native.rgb48_backend())"
+```
+
+The result is `avx2` or `scalar`. `--require-native` ensures native compilation,
+while a scalar result remains valid on unsupported CPUs. Build logs report an
+AVX2-specific compiler failure if that object cannot be produced.
+
 ## Continuous integration
 
 The `windows-package` job in `.github/workflows/tests.yml` runs on every push
