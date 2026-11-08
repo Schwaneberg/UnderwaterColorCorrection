@@ -2,7 +2,7 @@
 
 Status: v1 requirements with current implementation coverage
 
-Implementation baseline: 0.4.2
+Implementation baseline: 0.4.3
 
 Last reviewed: 2026-11-08
 
@@ -406,7 +406,7 @@ remain forward-compatible.
 
 ## 11. Current coverage and open v1 work
 
-The 0.4.2 code implements the primary single-clip correction workflow, automatic
+The 0.4.3 code implements the primary single-clip correction workflow, automatic
 analysis, twelve keyframable controls, comparison/scopes, projects/recovery,
 presets, independent persistent batch processing, and all five codec families
 listed above (HEVC has one profile with selectable SDR/HDR intent). It also

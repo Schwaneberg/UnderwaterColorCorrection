@@ -10,7 +10,7 @@ to accept ordinary standards-compliant video from other cameras as well.
 
 This repository contains a runnable Python desktop application and headless
 video-processing commands, together with the target v1 specifications. The
-current development version is 0.4.2; it includes classical adaptive correction
+current development version is 0.4.3; it includes classical adaptive correction
 and an optional local ONNX model interface. No trained model is bundled.
 
 See the [changelog](CHANGELOG.md) for release updates, including explicit model

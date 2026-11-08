@@ -216,6 +216,29 @@ def _download(url, destination: Path, cancel=None):
         partial.unlink(missing_ok=True)
 
 
+def _install_embedded_pip(python: Path, cancel=None, progress=None):
+    """Bootstrap/repair pip without ensurepip, absent from embedded Python."""
+    destination = python.parent
+    # Re-enable site-packages even after an interrupted first-time setup.
+    for pth in destination.glob("python*._pth"):
+        lines = pth.read_text(encoding="utf-8").splitlines()
+        lines = ["import site" if line.strip() == "#import site" else line for line in lines]
+        if "import site" not in lines:
+            lines.append("import site")
+        pth.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if progress:
+        progress(0.1, "Installing pip into the model converter runtime…")
+    get_pip = destination / "get-pip.py"
+    try:
+        _download("https://bootstrap.pypa.io/get-pip.py", get_pip, cancel)
+        _run_cancellable(
+            [str(python), "-I", str(get_pip), "--isolated", "--disable-pip-version-check",
+             "--no-warn-script-location"], cancel=cancel,
+        )
+    finally:
+        get_pip.unlink(missing_ok=True)
+
+
 def _bootstrap_embedded_python(destination: Path, cancel=None, progress=None) -> Path:
     """Install the official python.org embeddable distribution plus pip (Windows).
 
@@ -234,20 +257,8 @@ def _bootstrap_embedded_python(destination: Path, cancel=None, progress=None) ->
     with zipfile.ZipFile(archive) as bundle:
         bundle.extractall(destination)
     archive.unlink(missing_ok=True)
-    # Enable site-packages so pip-installed modules are importable.
-    for pth in destination.glob("python*._pth"):
-        lines = pth.read_text(encoding="utf-8").splitlines()
-        lines = ["import site" if line.strip() == "#import site" else line for line in lines]
-        if "import site" not in lines:
-            lines.append("import site")
-        pth.write_text("\n".join(lines) + "\n", encoding="utf-8")
     python = destination / "python.exe"
-    if progress:
-        progress(0.1, "Installing pip into the model converter runtime…")
-    get_pip = destination / "get-pip.py"
-    _download("https://bootstrap.pypa.io/get-pip.py", get_pip, cancel)
-    _run_cancellable([str(python), str(get_pip), "--no-warn-script-location"], cancel=cancel)
-    get_pip.unlink(missing_ok=True)
+    _install_embedded_pip(python, cancel, progress)
     return python
 
 
@@ -309,9 +320,12 @@ def ensure_converter_python(bootstrap=True, cancel=None, progress=None, backend=
         capture_output=True, text=True, **NO_WINDOW,
     )
     if pip_check.returncode:
-        _run_cancellable(
-            [str(python), "-I", "-m", "ensurepip", "--upgrade"], cancel=cancel,
-        )
+        if any(python.parent.glob("python*._pth")):
+            _install_embedded_pip(python, cancel, progress)
+        else:
+            _run_cancellable(
+                [str(python), "-I", "-m", "ensurepip", "--upgrade"], cancel=cancel,
+            )
     if progress:
         progress(0.15, f"Installing {'CUDA' if backend == 'cuda' else 'CPU'} PyTorch (large download, this can take several minutes)…")
     torch_index = "cu130" if backend == "cuda" else "cpu"

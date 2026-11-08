@@ -143,12 +143,18 @@ def test_cli_model_tools_subcommand_delegates_to_model_setup(monkeypatch):
     assert forwarded == [["prepare-orientation", "--models-dir", "/tmp/m"]]
 
 
-def test_converter_repairs_missing_pip_and_uses_isolated_python(tmp_path, monkeypatch):
+@pytest.mark.parametrize("embedded", [False, True])
+def test_converter_repairs_missing_pip_and_uses_isolated_python(tmp_path, monkeypatch, embedded):
     monkeypatch.setattr(model_setup, "_has_converter_modules", lambda: False)
     monkeypatch.setattr(model_setup, "converter_environment_path", lambda: tmp_path)
     python = model_setup._venv_python(tmp_path)
     python.parent.mkdir(parents=True, exist_ok=True)
     python.touch()
+    if embedded:
+        pth = python.parent / "python314._pth"
+        pth.write_text("python314.zip\n.\n#import site\n", encoding="utf-8")
+        monkeypatch.setattr(model_setup, "_download",
+                            lambda url, path, cancel: path.write_text("# pip bootstrap\n"))
     checks = []
     results = iter([1, 1, 0])  # missing modules, missing pip, successful validation
 
@@ -162,10 +168,32 @@ def test_converter_repairs_missing_pip_and_uses_isolated_python(tmp_path, monkey
                         lambda args, **kwargs: installs.append(args) or "")
 
     assert model_setup.ensure_converter_python() == str(python)
-    assert installs[0] == [str(python), "-I", "-m", "ensurepip", "--upgrade"]
+    if embedded:
+        assert installs[0] == [str(python), "-I", str(python.parent / "get-pip.py"),
+                               "--isolated", "--disable-pip-version-check", "--no-warn-script-location"]
+        assert "import site" in pth.read_text().splitlines()
+        assert "#import site" not in pth.read_text()
+        assert not (python.parent / "get-pip.py").exists()
+        assert not any("ensurepip" in args for args in installs)
+    else:
+        assert installs[0] == [str(python), "-I", "-m", "ensurepip", "--upgrade"]
     assert "torch" in installs[1]
     assert "onnx" in installs[2]
     assert all(args[:2] == [str(python), "-I"] for args in checks + installs)
+
+
+@pytest.mark.parametrize("failure", [model_setup.UWCCError, model_setup.Cancelled])
+def test_embedded_pip_repair_cleans_up_after_failure(tmp_path, monkeypatch, failure):
+    monkeypatch.setattr(model_setup, "_download",
+                        lambda url, path, cancel: path.write_text("# pip bootstrap\n"))
+
+    def fail(*args, **kwargs):
+        raise failure("stopped")
+
+    monkeypatch.setattr(model_setup, "_run_cancellable", fail)
+    with pytest.raises(failure, match="stopped"):
+        model_setup._install_embedded_pip(tmp_path / "python.exe")
+    assert not (tmp_path / "get-pip.py").exists()
 
 
 def test_converter_validation_failure_is_reported(tmp_path, monkeypatch):

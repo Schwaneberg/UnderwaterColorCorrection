@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.3 — 2026-11-08
+
+### Fixed
+
+- Repair missing pip in an existing embedded model-converter Python using
+  `get-pip.py` instead of `ensurepip`, which the embedded runtime does not ship.
+  This addresses the Store setup error `No module named ensurepip` after an
+  incomplete converter bootstrap. Regular virtual environments retain ensurepip.
+- Share isolated pip bootstrap between fresh embedded setup and recovery,
+  re-enable site-packages, and clean up the bootstrap script on failure/cancel.
+
+### Validation
+
+- Windows `.venv` full suite: 231 passed, 23 skipped. Coverage includes embedded
+  recovery, regular ensurepip repair, and cleanup after failure/cancellation.
+- Retrying model setup on the affected PC with a rebuilt package remains needed.
+
 ## 0.4.2 — 2026-11-08
 
 ### Fixed

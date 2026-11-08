@@ -101,6 +101,17 @@ Monitor trace for denied executable/DLL access. The status alone does not
 identify which file was denied. Model setup uses a per-user runtime and should
 not require administrator privileges.
 
+### Interrupted model-runtime setup
+
+The embedded converter Python does not include `ensurepip`. If an interrupted
+setup leaves Python without pip, recovery must enable `import site` in its
+`python*._pth` file and bootstrap pip with `get-pip.py`, as on first installation.
+The setup repair path does this automatically; ordinary virtual environments
+continue to use `ensurepip`. This recovery fix is included in 0.4.3. After
+installing that version, retry **Prepare models** with automatic runtime
+installation enabled. It does not require deleting prepared models or installing
+system Python. A retry on the affected standard-user PC remains to be verified.
+
 ## Store submission
 
 1. Register a developer account in [Microsoft Partner Center](https://partner.microsoft.com/dashboard)

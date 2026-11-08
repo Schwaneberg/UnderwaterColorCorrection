@@ -2,7 +2,7 @@
 
 Status: Current architecture and v1 verification targets
 
-Implementation baseline: 0.4.2
+Implementation baseline: 0.4.3
 
 Last reviewed: 2026-11-08
 
@@ -164,7 +164,7 @@ analysis-cache fields. The top-level shape is:
 ```json
 {
   "schema_version": 1,
-  "application_version": "0.4.2",
+  "application_version": "0.4.3",
   "source": "relative/or/absolute/source.mp4",
   "source_fingerprint": {
     "size": 0,
@@ -273,6 +273,12 @@ need an application restart. DirectML conversion uses CPU PyTorch; CUDA uses
 CUDA-enabled PyTorch. Drivers remain user-installed prerequisites. Setup is
 intended to work as a standard user, without writing into the installed package.
 
+Since 0.4.3, missing-pip recovery detects embedded runtimes by their
+`python*._pth` files, enables `import site`, and uses the same isolated
+`get-pip.py` bootstrap as initial setup. Embedded Python does not provide
+`ensurepip`; regular virtual environments retain that repair path. Temporary
+bootstrap scripts are removed after success, failure, or cancellation.
+
 The 2026-11-08 standard-user Store report shows converter `python.exe` startup
 failure `0xC0000022`. The 0.4.2 DLL-search isolation patch still requires
 a rebuilt-package retest on the affected account; the root cause is not confirmed.
@@ -297,7 +303,7 @@ automation, fuzzing, and manual release sign-off are targets, not existing CI
 coverage. Existing changelog test results are historical evidence, not fresh
 verification of the current working tree.
 
-## 12. v1 verification targets (not a certification of 0.4.2)
+## 12. v1 verification targets (not a certification of 0.4.3)
 
 ### 12.1 Test corpus
 

@@ -1,3 +1,12 @@
+uwcc (0.4.3-1~ppa1) resolute; urgency=medium
+
+  * Repair embedded converter pip with get-pip.py rather than missing ensurepip.
+  * Share first-install/recovery bootstrap and restore site-packages support.
+  * Clean bootstrap scripts after failed or canceled installation.
+  * Verify Windows suite: 231 passed, 23 skipped; affected-PC retest pending.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Sun, 08 Nov 2026 18:00:00 +0100
+
 uwcc (0.4.2-1~ppa1) resolute; urgency=medium
 
   * Isolate frozen Windows model converter DLL/PATH search and working directory.
