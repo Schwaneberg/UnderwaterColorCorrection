@@ -1,5 +1,6 @@
 """Installed entry point for explicit, user-owned model preparation."""
 import argparse
+from contextlib import contextmanager
 import importlib.util
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import venv
 
 from .errors import Cancelled, UWCCError
@@ -60,6 +62,58 @@ def _venv_python(env_path: Path) -> Path:
 
 
 CONVERTER_CHECK = "import torch, onnx, cv2, onnxruntime, numpy"
+_DLL_SEARCH_LOCK = threading.RLock()
+
+
+@contextmanager
+def _system_dll_search():
+    """Keep PyInstaller's DLL directory out of external Python children."""
+    import ctypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    get_directory = kernel32.GetDllDirectoryW
+    get_directory.argtypes = [ctypes.c_uint32, ctypes.c_wchar_p]
+    get_directory.restype = ctypes.c_uint32
+    set_directory = kernel32.SetDllDirectoryW
+    set_directory.argtypes = [ctypes.c_wchar_p]
+    set_directory.restype = ctypes.c_int
+    with _DLL_SEARCH_LOCK:
+        ctypes.set_last_error(0)
+        size = get_directory(0, None)
+        if not size and ctypes.get_last_error():
+            raise ctypes.WinError(ctypes.get_last_error())
+        previous = ctypes.create_unicode_buffer(size + 1)
+        if size:
+            ctypes.set_last_error(0)
+            # An empty DLL directory returns zero even when the first query
+            # requested one character for its terminating NUL.
+            if not get_directory(len(previous), previous) and ctypes.get_last_error():
+                raise ctypes.WinError(ctypes.get_last_error())
+        if not set_directory(None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            yield
+        finally:
+            if not set_directory(previous.value or None):
+                raise ctypes.WinError(ctypes.get_last_error())
+
+
+def _converter_process(operation, args, **kwargs):
+    if not (os.name == "nt" and getattr(sys, "frozen", False)) or Path(args[0]) == Path(sys.executable):
+        return operation(args, **kwargs)
+    # Qt/PyInstaller may also add bundle directories to PATH. External Python
+    # must load its own native libraries, including inside a Store installation.
+    env = dict(kwargs.get("env") if kwargs.get("env") is not None else os.environ)
+    roots = [Path(sys.executable).resolve().parent]
+    if getattr(sys, "_MEIPASS", None):
+        roots.append(Path(sys._MEIPASS).resolve())
+    env["PATH"] = os.pathsep.join(
+        entry for entry in env.get("PATH", "").split(os.pathsep)
+        if entry and not any(Path(entry).resolve().is_relative_to(root) for root in roots)
+    )
+    kwargs["env"] = env
+    kwargs.setdefault("cwd", str(Path(args[0]).resolve().parent))
+    with _system_dll_search():
+        return operation(args, **kwargs)
 
 
 def _has_converter_modules():
@@ -120,7 +174,7 @@ def model_status(models_dir=None):
 
 def _run_cancellable(args, cancel=None, env=None):
     with tempfile.TemporaryFile() as output:
-        process = subprocess.Popen(
+        process = _converter_process(subprocess.Popen,
             args,
             stdin=subprocess.DEVNULL,
             stdout=output,
@@ -239,7 +293,7 @@ def ensure_converter_python(bootstrap=True, cancel=None, progress=None, backend=
         validation += f"; assert '{provider}' in onnxruntime.get_available_providers()"
         validation += "; assert " + ("torch.version.cuda is not None" if backend == "cuda" else "torch.version.cuda is None")
     if python.is_file():
-        check = subprocess.run([str(python), "-I", "-c", validation], capture_output=True, text=True, **NO_WINDOW)
+        check = _converter_process(subprocess.run, [str(python), "-I", "-c", validation], capture_output=True, text=True, **NO_WINDOW)
         if check.returncode == 0:
             return str(python)
     if not bootstrap:
@@ -250,7 +304,7 @@ def ensure_converter_python(bootstrap=True, cancel=None, progress=None, backend=
         raise UWCCError(f"Converter runtime python was not created at {python}")
     # A previous interrupted/debugged bootstrap can leave Python without pip.
     # Repair it before installing packages into this private environment.
-    pip_check = subprocess.run(
+    pip_check = _converter_process(subprocess.run,
         [str(python), "-I", "-m", "pip", "--version"],
         capture_output=True, text=True, **NO_WINDOW,
     )
@@ -281,7 +335,7 @@ def ensure_converter_python(bootstrap=True, cancel=None, progress=None, backend=
          "onnx", "onnxscript", "opencv-python-headless", ort_package, "numpy"],
         cancel=cancel,
     )
-    check = subprocess.run([str(python), "-I", "-c", validation], capture_output=True, text=True, **NO_WINDOW)
+    check = _converter_process(subprocess.run, [str(python), "-I", "-c", validation], capture_output=True, text=True, **NO_WINDOW)
     if check.returncode:
         raise UWCCError(f"Model converter runtime validation failed:\n{check.stderr[-4000:]}")
     return str(python)

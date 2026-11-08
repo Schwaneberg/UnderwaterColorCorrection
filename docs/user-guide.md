@@ -2,7 +2,15 @@
 
 ## Installation
 
-Python 3.12 or later and FFmpeg/ffprobe on PATH are required.
+Windows users can install the Microsoft Store package or use the standalone
+bundle, which includes Python, FFmpeg/ffprobe, OpenCV, and ONNX Runtime. Launch
+**Underwater Color Correction** from Start, or `uwcc-gui.exe` in the standalone
+bundle. See [Windows packaging](windows-packaging.md) for build/distribution
+details. Ubuntu users can install the `uwcc` package using the
+[PPA instructions](../README.md#install-on-ubuntu).
+
+For a source installation, Python 3.12 or later and FFmpeg/ffprobe on PATH are
+required. The commands below describe that source workflow.
 
 On Ubuntu, the distribution-package route is:
 
@@ -25,13 +33,32 @@ python3 -m venv .venv
 
 The implementation also works with system PyQt6. An empty `.venv` created
 without system packages cannot see those distribution packages; use `python3`
-for the distribution-package route. Windows users can install FFmpeg on PATH
-and use the same Python package, but a Windows build has not been validated.
+for the distribution-package route. Windows source installations can use the
+same Python package with FFmpeg on PATH; packaged Windows installations do not
+require a separate Python installation.
 
 For optional local AI, install one of the `ml`, `ml-nvidia`, or `ml-amd` extras.
 The [GPU setup guide](gpu-setup.md) covers NVIDIA CUDA on Linux/Windows,
 AMD DirectML on Windows, CPU fallback, and runtime verification. AMD GPU
 inference on Linux is not currently supported by UWCC.
+
+### Optional model and runtime setup
+
+Choose **AI models** to prepare local models. If no models are installed, this
+dialog opens at startup; closing it leaves manual and classical correction
+available. Downloads begin only after you request setup.
+
+Choose CPU, NVIDIA CUDA, or Windows AMD / DirectML, then a setup action.
+**Install all models (Full feature set, best performance)** prepares UDnet,
+FastDVDnet, and RightWayUp Max INT8 and requires the largest download. Runtime
+setup can download several GB. **Install or switch execution runtime only**
+configures existing models without rebuilding them. Restart UWCC after selecting
+a new runtime. AI acceleration and hardware video codecs are separate choices.
+
+Models and private runtimes are stored under `%LOCALAPPDATA%\uwcc` on Windows
+or the XDG user data directory on Linux; setup is intended to require no admin
+rights. A standard-user Store Python startup failure (`0xC0000022`) is under
+investigation; see [current limitations](product-spec.md#11-current-coverage-and-open-v1-work).
 
 ## First correction
 
@@ -48,7 +75,7 @@ frames. It applies one fixed quarter-turn only when predictions strongly agree;
 uncertain clips retain their orientation and show a suggested manual correction.
 The model runs locally on CPU, including when using the NVIDIA launcher.
 
-Install the optional model once with `uwcc-models prepare-orientation` (requires
+Install it through **AI models**, or use `uwcc-models prepare-orientation` (requires
 `uwcc-model-tools` and downloads about 297 MiB from upstream). No model is
 downloaded at application launch. Without it, manual rotation and ordinary
 metadata rotation work normally. See the [underwater evaluation](benchmarks/orientation.md)
@@ -256,8 +283,10 @@ Omitting these options retains the settings saved in the project or preset.
 ## Optional ONNX model
 
 Install `.[ml]` in an environment with network access, then select a local
-manifest in the GUI or pass `--model manifest.json` to `analyze`. UWCC performs
-no downloads. A model is optional and no model is bundled.
+manifest in the GUI or pass `--model manifest.json` to `analyze`. Alternatively,
+use **AI models** for explicit model/runtime downloads and local preparation.
+Opening media and running ordinary correction do not download models. A model
+is optional and no model is bundled.
 
 The interface accepts a single float32 NCHW RGB tensor in encoded sRGB, in the
 range 0–1, and returns a single corrected tensor with the same shape. A model
@@ -295,6 +324,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 QT_QPA_PLATFORM=offscreen python3 -m pytest -q
 
 FFmpeg with x264, x265, DNxHR, ProRes, and FFV1 encoders must be installed for the
 media tests. The GUI test runs offscreen and is skipped if neither Qt binding is
-installed. See [implementation status](implementation-status.md) for the
-remaining v1 release work and [the bootstrap decision](adr-001-bootstrap.md) for
-the dependency choices made in this environment.
+installed. See [current coverage and open v1 work](product-spec.md#11-current-coverage-and-open-v1-work)
+for release limitations and [the technical specification](technical-spec.md)
+for current architecture. [The bootstrap decision](adr-001-bootstrap.md) records
+the original dependency choices; it is historical context.

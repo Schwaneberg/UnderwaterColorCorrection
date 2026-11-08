@@ -10,11 +10,11 @@ to accept ordinary standards-compliant video from other cameras as well.
 
 This repository contains a runnable Python desktop application and headless
 video-processing commands, together with the target v1 specifications. The
-current development version is 0.3.2; it includes classical adaptive correction
+current development version is 0.4.2; it includes classical adaptive correction
 and an optional local ONNX model interface. No trained model is bundled.
 
-See the [changelog](CHANGELOG.md) for release updates, including CPU, NVIDIA
-CUDA, and Windows DirectML execution setup in 0.3.2.
+See the [changelog](CHANGELOG.md) for release updates, including explicit model
+setup, CPU/CUDA/DirectML runtimes, Windows packaging, and preview improvements.
 
 ## Install on Ubuntu
 
@@ -58,8 +58,9 @@ python3 -m uwcc
 
 See the [user guide](docs/user-guide.md) for Ubuntu installation, the visual
 workflow, batch jobs, optional models, CLI examples, and tests. Read the
-[implementation status](docs/implementation-status.md) for the capabilities
-and remaining v1 work; the specifications below describe the target release.
+[current coverage and open v1 work](docs/product-spec.md#11-current-coverage-and-open-v1-work)
+for capabilities and release gaps. The technical specification documents the
+current architecture and distinguishes it from unfulfilled v1 verification targets.
 
 For faster exports, build the optional C kernels with
 `python3 setup.py build_ext --inplace` (requires setuptools, Python development
@@ -95,10 +96,12 @@ UWCC will provide:
 - Rec.709, Sony log, HLG, and PQ color-management workflows;
 - reusable presets and batch processing;
 - high-quality editing masters and H.264/H.265 delivery exports; and
-- offline operation without accounts, telemetry, or cloud processing.
+- offline local processing without UWCC accounts or telemetry, with optional,
+  explicitly requested cloud grading advice.
 
-Ubuntu 26.04 is the required v1 platform. The design must remain portable to
-Windows 11, but a Windows package is not a v1 release gate.
+Ubuntu 26.04 Debian packages and Windows standalone/Microsoft Store MSIX packages
+are current distribution targets. Clean-machine and standard-user model setup
+validation remain part of the release work.
 
 ## Specifications
 

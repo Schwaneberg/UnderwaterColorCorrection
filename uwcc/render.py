@@ -150,18 +150,20 @@ def render(project, destination, profile="h264", cancel=None, progress=lambda *_
             commands.write_text("\n".join(
                 f"{max(0, (i-.25)/float(info.fps)):.9f} setpts expr {timestamp:.9f}/TB;"
                 for i, timestamp in enumerate(times)), encoding="utf-8")
-            escaped = str(commands).replace("\\", "\\\\").replace(":", "\\:").replace("'", "'\\''")
             filter_index = args.index("-vf")
-            graph = args[filter_index+1] + f",settb=AVTB,sendcmd=f='{escaped}',setpts=PTS"
-            script = directory / "render.ffgraph"
-            script.write_text(graph, encoding="utf-8")
-            args[filter_index:filter_index+2] = ["-filter_script:v", str(script)]
+            graph = args[filter_index+1] + ",settb=AVTB,sendcmd=f=timestamps.cmd,setpts=PTS"
+            # Only the per-frame commands grow with clip length; they already
+            # live in timestamps.cmd. Keep the short graph inline with -vf,
+            # supported by older FFmpeg and 9.x (which removed filter_script).
+            args[filter_index+1] = graph
             args += ["-enc_time_base", "1:1000000", "-fps_mode", "vfr"]
         if profile == "hevc" and "libx265" in codec_args:
             args += ["-x265-params", f"pools={threads}:frame-threads={min(threads, 3)}"]
         args += [str(video)]
         with tempfile.TemporaryFile() as errors:
-            process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errors, **NO_WINDOW)
+            # A fixed relative sendcmd filename avoids filter-language escaping
+            # of Windows drive letters and output folders containing quotes.
+            process = subprocess.Popen(args, cwd=directory, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errors, **NO_WINDOW)
             stop_watch = threading.Event()
 
             def watch():

@@ -1,8 +1,16 @@
 # UWCC Product Specification
 
-Status: Draft for implementation  
-Version: 0.1  
-Last updated: 2026-10-22
+Status: v1 requirements with current implementation coverage
+
+Implementation baseline: 0.4.2
+
+Last reviewed: 2026-11-08
+
+This document defines product intent. **Shall** identifies a v1 requirement,
+not a claim that the current release implements it. Section 11 records current
+coverage and remaining work; the [technical specification](technical-spec.md)
+describes the code and actual persistence formats. Release history belongs in
+the [changelog](../CHANGELOG.md).
 
 ## 1. Purpose
 
@@ -60,21 +68,26 @@ A successful v1 shall let the user:
 - SDR Rec.709, HLG, and PQ output transforms.
 - Software encoding on every supported installation and optional detected
   hardware encoding.
-- Ubuntu 26.04 packaging and Windows-safe architecture.
+- Ubuntu 26.04 packages and Windows standalone/Microsoft Store MSIX packaging.
+- Optional local UDnet reference enhancement, FastDVDnet temporal denoise,
+  and RightWayUp orientation detection, with explicit model/runtime setup.
+- Export-only background stabilization and conventional spatial/temporal denoise.
+- Learning a clip-specific grade from an aligned corrected SDR reference.
+- Optional, explicitly requested cloud grading advice with reviewed proposals;
+  local correction and export shall remain usable without this feature.
 
 ### 3.2 Explicit non-goals for v1
 
 - Still-image editing.
 - Cutting, ripple editing, transitions, titles, compositing, or a multi-clip
   sequence timeline.
-- Audio editing, mixing, denoising, or effects.
-- Camera stabilization, lens correction, object masks, or subject tracking.
+- Audio editing, mixing or effects.
+- Object masks or subject tracking.
 - RAW video development.
 - Training a model inside the application.
 - Cloud rendering, account synchronization, social sharing, telemetry, or
   automatic network downloads.
 - Fabricating objects, textures, or channel detail with generative inference.
-- A supported Windows installer; Windows 11 is a post-v1 delivery target.
 
 ## 4. Core concepts
 
@@ -104,8 +117,10 @@ confidence and shall always remain user-overridable.
 
 ### 4.2 Automatic correction
 
-Automatic correction is a time-varying, shot-aware grade generated from local
-ML inference. It shall target a conservative natural result:
+Automatic correction is a time-varying, shot-aware grade generated locally by
+adaptive levels/white balance, optional neural reference inference, or legacy
+balance. A verified model shall be optional; the inspector shall identify the
+actual engine and any fallback. It shall target a conservative natural result:
 
 - neutral objects should move toward neutrality when supported by the signal;
 - color separation and contrast should improve without a mandatory vivid look;
@@ -197,10 +212,11 @@ and momentary bypass modes. Split position shall be draggable. Zoom choices
 shall include Fit, 50%, 100%, 200%, and a free zoom; panning shall work at zoom
 levels larger than the viewer.
 
-Playback shall prioritize audiovisual continuity. When the requested preview
-quality cannot meet playback rate, UWCC shall lower proxy resolution after
-notifying the user; it shall not silently skip correction or alter export
-quality.
+Playback shall prioritize audiovisual continuity. Late frames may be dropped
+before correction rather than accumulating delay. Every displayed corrected
+frame shall use the selected grade, and playback compromises shall not alter
+export quality. Automatic proxy-resolution adaptation remains a target; the
+current playback and paused previews use 640- and up-to-960-pixel proxies.
 
 ### 5.3 Scopes
 
@@ -228,8 +244,9 @@ fallback, or continue manually.
 
 ### 5.5 Project persistence
 
-`Save Project` shall create a human-readable `.uwcc-project.json` sidecar and an
-adjacent optional analysis cache. Source video is never copied into the project.
+`Save Project` shall create a human-readable `.uwcc-project.json` sidecar.
+Current projects store generated analysis inline; an external analysis cache
+is not required. Source video is never copied into the project.
 
 The application shall autosave recoverable editing state after an edit settles
 for two seconds and at least once every 30 seconds while dirty. Recovery data
@@ -298,8 +315,9 @@ marked as hardware-dependent and shall never replace the software profiles.
 
 - Log input shall default to an SDR Rec.709 output; HDR output requires an
   explicit selection.
-- HLG or PQ input shall default to preserving its HDR transfer and primaries,
-  while offering an explicit SDR tone-map choice.
+- Output intent shall be explicit. The current default is SDR Rec.709 for all
+  inputs; preserving HLG or PQ requires selecting that HDR intent and a compatible
+  HEVC or FFV1 profile. Preview remains SDR regardless of export intent.
 - Resolution, frame rate, scan type, display aspect, pixel aspect, and rotation
   shall default to source values.
 - The entire source duration shall be exported; v1 has no trim semantics.
@@ -342,8 +360,15 @@ delete it.
 
 ## 8. Privacy, accessibility, and localization
 
-- All media, thumbnails, analysis, projects, and logs shall remain local.
-- The application shall make no network request during normal use.
+- Ordinary media processing, thumbnails, analysis, projects, and logs shall
+  remain local. Optional cloud advice is an explicit exception: it sends
+  downscaled proxy frames to the selected provider after user initiation.
+- Local correction, playback, and export shall make no network request.
+  Model/runtime setup shall download only after explicit user action; merely
+  offering setup at startup shall not start a download.
+- Cloud advice shall require user-provided credentials and review of the
+  proposed changes. Credentials shall not enter projects or presets. There
+  shall be no UWCC account requirement or telemetry.
 - Logs shall exclude decoded image content, precise location, and full source
   paths unless the user explicitly generates a diagnostic bundle.
 - Every operation shall be keyboard accessible and have a visible focus state.
@@ -365,15 +390,60 @@ v1 is acceptable only when:
 5. all normative export profiles round-trip with correct timing, audio, and
    color signaling;
 6. the CPU path completes every supported workflow without a GPU;
-7. the packaged application runs on a clean Ubuntu 26.04 installation;
-8. runtime operation is offline and contains no telemetry endpoint; and
+7. packaged applications run on clean Ubuntu 26.04 and Windows installations,
+   including model setup under a standard Windows user account;
+8. local workflows operate offline, optional network actions are explicit,
+   and the application contains no telemetry endpoint; and
 9. the release license report contains no unknown or incompatible artifact.
 
 ## 10. Deferred roadmap
 
-After v1, work may add a supported Windows 11 installer, still images, trim
-points, additional camera profiles, user-installable signed models, AV1 output,
+After v1, work may add still images, trim
+points, additional camera profiles, signed model distribution, AV1 output,
 and masking. These features shall not shape v1 UI or persistence in ways that
 delay the core correction workflow, except that schemas and path handling must
 remain forward-compatible.
+
+## 11. Current coverage and open v1 work
+
+The 0.4.2 code implements the primary single-clip correction workflow, automatic
+analysis, twelve keyframable controls, comparison/scopes, projects/recovery,
+presets, independent persistent batch processing, and all five codec families
+listed above (HEVC has one profile with selectable SDR/HDR intent). It also
+implements the optional model, orientation, finishing, reference-learning, and
+cloud-advice workflows in section 3.1. See the [user guide](user-guide.md) for
+the available actions and [technical specification](technical-spec.md) for
+implementation limits. This replaces the old standalone implementation checklist.
+
+The following requirements are still targets or need broader validation:
+
+- **Color and quality:** calibrated display management, reviewed log/HDR
+  behavior, calibrated model/filter confidence, broad real-camera/color-chart
+  evaluation, and certified temporal/flicker metrics. C0201 reference comparisons
+  measure similarity to a particular grade, not general physical color accuracy.
+- **Editing and analysis UX:** recent-project list, a complete GUI relink flow,
+  progressive publication of analysis, horizontal split/momentary bypass/free
+  zoom, and complete accessibility/localization review. Analysis currently
+  publishes its curve only on completion; canceled work is not a retained
+  partial analysis. The current toolbar starts analysis automatically rather
+  than offering the originally proposed Analyze button.
+- **Batch and export UX:** folder/drop intake in the batch dialog, reordering
+  and per-item actions, exact-current-grade transfer, disk-space estimation,
+  comprehensive metadata controls/reporting, and global resource budgets.
+  Current batch pause stops the operation and resume restarts that item.
+- **Timing and playback:** exact final-packet duration for unusual VFR input,
+  complete stream-level audio-offset validation, and visible-window/audible-sync
+  checks. Historical Windows VFR export failures from the removed FFmpeg
+  filter-script option are addressed by the compatible inline-filter path.
+  Preview
+  audio requires optional Qt Multimedia; export audio is handled by FFmpeg.
+- **Distribution:** dependency locks/SBOM and complete binary-license provenance,
+  broader clean-machine testing, and standard-user Store model-bootstrap
+  verification. The reported `0xC0000022` Python startup failure has a candidate
+  DLL-search isolation fix in 0.4.2, pending rebuilt-package retest.
+  DirectML availability in a package is not hardware-validation evidence.
+
+Numeric quality and timing gates in the technical specification remain v1
+acceptance targets. Historical test counts and machine-specific benchmarks do
+not establish that the current release satisfies all of them.
 

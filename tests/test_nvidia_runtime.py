@@ -1,8 +1,20 @@
+"""Shared runtime paths and Linux-only uwcc-nvidia setup/launcher behavior.
+
+Windows CUDA installation/provider coverage lives in test_model_setup.py,
+test_execution.py, test_neural_providers.py, and test_validate_gpu_denoise.py.
+"""
+import os
+import sys
 from types import SimpleNamespace
 
 import pytest
 
 from uwcc import nvidia_runtime as runtime
+
+linux_launcher = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="uwcc-nvidia launcher uses Linux user IDs and bin/python; Windows uses model setup",
+)
 
 
 @pytest.fixture
@@ -14,12 +26,22 @@ def private_environment(tmp_path, monkeypatch):
 
 def test_default_runtime_is_versioned_and_does_not_create_data(tmp_path, monkeypatch):
     monkeypatch.delenv("UWCC_NVIDIA_ENV", raising=False)
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path/"xdg"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path/"local"))
+    root = tmp_path/("local" if os.name == "nt" else "xdg")
     abi = f"{runtime.sys.version_info.major}.{runtime.sys.version_info.minor}"
-    assert runtime.environment_path() == tmp_path/"uwcc/runtimes"/f"nvidia-py{abi}-ort{runtime.ORT_VERSION}"
-    assert not (tmp_path/"uwcc").exists()
+    assert runtime.environment_path() == root/"uwcc/runtimes"/f"nvidia-py{abi}-ort{runtime.ORT_VERSION}"
+    assert list(tmp_path.iterdir()) == []
 
 
+def test_explicit_runtime_override_does_not_create_data(tmp_path, monkeypatch):
+    destination = tmp_path/"custom runtime"
+    monkeypatch.setenv("UWCC_NVIDIA_ENV", str(destination))
+    assert runtime.environment_path() == destination
+    assert not destination.exists()
+
+
+@linux_launcher
 def test_setup_decline_performs_no_install(private_environment, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda _: "no")
     monkeypatch.setattr(runtime.venv, "EnvBuilder", lambda **_: pytest.fail("Unexpected environment creation"))
@@ -27,6 +49,7 @@ def test_setup_decline_performs_no_install(private_environment, monkeypatch):
     assert not private_environment.exists()
 
 
+@linux_launcher
 def test_setup_refuses_root(private_environment, monkeypatch):
     monkeypatch.setattr(runtime.os, "geteuid", lambda: 0)
     with pytest.raises(SystemExit) as exc:
@@ -34,6 +57,7 @@ def test_setup_refuses_root(private_environment, monkeypatch):
     assert exc.value.code == 1
 
 
+@linux_launcher
 @pytest.mark.parametrize("validation_code", [0, 1])
 def test_setup_uses_private_pinned_wheels_and_validates(private_environment, monkeypatch, validation_code):
     calls = []
@@ -53,6 +77,7 @@ def test_setup_uses_private_pinned_wheels_and_validates(private_environment, mon
                       "--only-binary=:all:", "--index-url", "https://pypi.org/simple", runtime.REQUIREMENT]]
 
 
+@linux_launcher
 def test_setup_reuses_working_runtime(private_environment, monkeypatch):
     (private_environment/"bin").mkdir(parents=True)
     (private_environment/"bin/python").touch()
@@ -61,11 +86,13 @@ def test_setup_reuses_working_runtime(private_environment, monkeypatch):
     assert runtime.setup_main(["--yes"]) == 0
 
 
+@linux_launcher
 def test_launcher_missing_runtime_never_downloads(private_environment, monkeypatch):
     monkeypatch.setattr(runtime.subprocess, "run", lambda *_: pytest.fail("Unexpected subprocess"))
     assert runtime.launch_main(["models"]) == 1
 
 
+@linux_launcher
 def test_launcher_rejects_cpu_fallback(private_environment, monkeypatch):
     (private_environment/"bin").mkdir(parents=True)
     (private_environment/"bin/python").touch()
@@ -74,6 +101,7 @@ def test_launcher_rejects_cpu_fallback(private_environment, monkeypatch):
     assert runtime.launch_main([]) == 1
 
 
+@linux_launcher
 @pytest.mark.parametrize("args,module,forwarded", [(["gui", "my video.mp4"], "uwcc", ["gui", "my video.mp4"]),
     (["model-tools", "validate-gpu"], "uwcc.model_setup", ["validate-gpu"])])
 def test_launcher_uses_gpu_interpreter(private_environment, monkeypatch, args, module, forwarded):

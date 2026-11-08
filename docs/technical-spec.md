@@ -1,548 +1,303 @@
 # UWCC Technical Specification
 
-Status: Draft for implementation  
-Version: 0.1  
-Last updated: 2026-10-22
+Status: Current architecture and v1 verification targets
+
+Implementation baseline: 0.4.2
+
+Last reviewed: 2026-11-08
+
+Sections 1–11 describe the current code unless explicitly marked as a target or
+limitation. Section 12 retains the intended v1 verification gates; it does not
+claim that those gates have passed. Product requirements and remaining gaps live
+in the [product specification](product-spec.md#11-current-coverage-and-open-v1-work).
+[ADR 001](adr-001-bootstrap.md) records the original bootstrap decisions and is
+historical, rather than an inventory of today's installed dependencies.
 
 ## 1. Architectural goals
 
-The implementation shall optimize for predictable color, temporal stability,
-recoverability, and inspectability rather than opaque enhancement. ML proposes
-the correction; deterministic, color-managed code applies it at full
-resolution. The same correction graph shall drive still preview frames,
-playback, scopes, and final rendering.
+UWCC separates input interpretation, generated automatic correction, manual
+finishing, and output intent. Preview and export share correction code; preview
+uses smaller images and an SDR display transform. Local neural color models
+provide reference grades that are fitted to global color transforms. Their
+reference pixels do not replace full-resolution source detail.
 
-The architecture shall enforce these boundaries:
-
-1. Media I/O never decides color intent.
-2. Input and output color transforms are explicit and independently testable.
-3. ML inference never writes full-resolution output frames directly.
-4. Automatic analysis and manual finishing remain separate persisted layers.
-5. Preview quality may vary, but correction semantics may not.
-6. A failure in optional acceleration falls back without changing the project.
-7. User media and generated pixels never leave the machine.
+Full-resolution FastDVDnet denoise is a separate, optional export effect.
+Stabilization is also export-only. Ordinary processing is local; explicitly
+requested model/runtime downloads and cloud advice are separate network paths.
 
 ## 2. Technology baseline
 
-The reference implementation shall use:
-
-| Concern | Required technology | License constraint |
-| --- | --- | --- |
-| Language | CPython 3.12 | PSF-compatible |
-| UI | PySide6 and Qt Quick/QRhi | LGPL/GPL-compatible, dynamically linked where required |
-| Numeric processing | NumPy | BSD-compatible |
-| Image analysis | OpenCV | Apache-2.0-compatible |
-| Color management | OpenColorIO with an embedded reviewed config | BSD-compatible |
-| Media binding | PyAV | BSD-compatible |
-| Media backend | FFmpeg built with GPL options | GPL-compatible components only |
-| ML inference | ONNX Runtime | MIT-compatible |
-| Model exchange | ONNX | Open specification and tooling |
-| Packaging | PyInstaller plus AppImage tooling | GPL-compatible |
-| Test runner | pytest | MIT-compatible |
-
-PyTorch may be used in the developer-only model conversion and validation
-environment, but shall not be part of the runtime package. Runtime version
-ranges shall be locked with hashes. The lockfile, FFmpeg configuration string,
-OpenColorIO config hash, model hash, and build tool versions shall be captured
-in release provenance.
-
-An implementation may replace a listed library only through an architecture
-decision record demonstrating equivalent behavior, platform support, licensing,
-and test coverage.
-
-## 3. Logical components
-
-### 3.1 Application shell
-
-Owns window lifecycle, commands, undo/redo, recent projects, preferences,
-autosave, and recovery. It communicates with long-running services through
-typed messages and shall not perform decoding or inference on the UI thread.
-
-### 3.2 Media service
-
-`MediaService` shall:
-
-- probe streams and metadata;
-- expose decoded video frames with exact presentation timestamps;
-- expose audio to the playback path;
-- seek to the nearest required frame and identify approximate seeks;
-- decode proxy or full-resolution frames; and
-- mux encoded video, audio, and allowed metadata.
-
-PyAV shall be used for interactive decode and timestamp control. Export may use
-PyAV or a supervised FFmpeg subprocess, but command construction shall use
-argument arrays rather than a shell and shall be captured in diagnostic logs
-with paths redacted by default.
-
-### 3.3 Color service
-
-`ColorService` shall own input transforms, the scene-linear working space,
-display/output transforms, gamut mapping, and metadata tags. The working space
-shall be ACEScg linear floating point. Processing shall use float32; a preview
-shader may use float16 intermediates only if golden-image tolerances pass.
-
-OpenColorIO shall perform standardized transforms. Sony log transforms and HDR
-transforms shall be validated against published transfer-function test vectors.
-The embedded configuration shall be versioned and hashed in every project.
-
-### 3.4 Analysis service
-
-`AnalysisService` shall orchestrate scene detection, sampling, filter
-classification, ML inference, transform fitting, confidence evaluation,
-temporal stabilization, cache writing, and cancellation.
-
-Analysis shall run in a worker process so a native-library failure or GPU reset
-does not terminate the UI. Communication shall contain metadata, shared-memory
-frame handles, progress events, and immutable result records. The worker shall
-have no network capability configured by the application.
-
-### 3.5 Correction graph
-
-`CorrectionGraph` shall evaluate these stages in order:
-
-1. decode range normalization;
-2. input transform to ACEScg;
-3. automatic time-varying transform blended by correction strength;
-4. temperature and tint;
-5. exposure;
-6. black point, shadows, highlights, and contrast tone curve;
-7. hue and saturation;
-8. bounded dehaze;
-9. gamut compression;
-10. output transform;
-11. output-referred edge-limited sharpening; and
-12. legal-range conversion and quantization/dither for encode.
-
-Each node shall be deterministic for the same inputs and configuration. Preview
-and render nodes shall share parameter evaluation code. GPU shaders shall be
-tested against the CPU reference and shall not define independent semantics.
-
-### 3.6 Preview service
-
-`PreviewService` shall coordinate decode, correction evaluation, audio clock,
-frame queueing, viewer rendering, scopes, and proxy selection. Qt's QRhi layer
-shall target Vulkan or OpenGL on Ubuntu and permit a D3D backend later on
-Windows. Unsupported shader features shall fall back to the CPU correction
-graph.
-
-The audio clock is authoritative during playback. The preview may drop late
-video frames but shall record a dropped-frame counter and lower proxy resolution
-after five consecutive seconds below 90% of requested frame rate.
-
-### 3.7 Render queue
-
-`RenderQueue` shall persist jobs before starting them, isolate each output in a
-worker process, validate preconditions, write to a `.partial` target, and rename
-atomically after validation. Only one software render shall run by default;
-users may increase concurrency in preferences. Analysis and rendering shall
-honor a shared memory-pressure limit.
-
-## 4. Media and color contract
-
-### 4.1 Required input support
-
-The acceptance suite shall cover:
-
-- MP4/MOV containing H.264/AVC, including Sony XAVC S variants;
-- 1920×1080 and 3840×2160 progressive video;
-- 23.976, 24, 25, 29.97, 30, 50, 59.94, and 60 fps;
-- 8-bit 4:2:0 and 8/10-bit 4:2:2 decode where supported by FFmpeg;
-- AAC and uncompressed PCM audio; and
-- files with rotation, non-square pixel, full/limited-range, and variable frame
-  rate metadata.
-
-Other FFmpeg-decodable sources may open as best effort but are not v1 release
-requirements. Variable frame rate shall remain variable unless the user
-explicitly selects a constant-frame-rate export.
-
-### 4.2 Input-profile resolution
-
-Resolution order shall be:
-
-1. explicit project override;
-2. unambiguous standardized stream/container metadata;
-3. a remembered decision for the same verified source fingerprint; and
-4. user confirmation.
-
-Filename, camera model, and image statistics may suggest a selection but shall
-not silently decide a log or HDR profile. An export job with an unresolved
-profile shall fail validation before rendering.
-
-### 4.3 Working and display spaces
-
-Decoded Y'CbCr shall be expanded using its declared matrix, primaries, transfer,
-and range. Missing standard-profile metadata shall default to limited-range
-Rec.709 only after presenting that assumption in the inspector. Log input never
-uses that default.
-
-ACEScg shall be the working space. The display transform shall match the user's
-selected display profile when supported; otherwise it shall target sRGB/Rec.709
-and disclose the fallback. HDR preview is optional in v1 even though HDR input
-and output processing is required. On an SDR display, HLG/PQ shall use the
-specified SDR preview tone map without changing render intent.
-
-### 4.4 Quantization
-
-All corrections shall occur before output quantization. Conversion to 8-bit
-shall use deterministic triangular-pdf dither. Ten-bit integer output shall use
-deterministic ordered or triangular-pdf dither. Dither seed shall derive from
-the source fingerprint and output frame presentation timestamp so repeated
-renders are byte-stable when the encoder is deterministic.
-
-## 5. Automatic correction design
-
-### 5.1 Model contract
-
-The initial model shall be an ONNX conversion of the openly licensed DICAM
-underwater enhancement model. Both repository code and the exact checkpoint
-must pass the release license audit; a code license shall not be assumed to
-cover weights without evidence. If the chosen checkpoint lacks redistributable
-terms, it shall not ship and v1 remains incomplete until an equivalently tested,
-redistributable checkpoint is trained or obtained.
-
-The model operates only as a low-resolution reference-grade generator. Its
-pixels shall not be scaled and substituted into the output. This prevents the
-model from inventing full-resolution detail and makes correction stable across
-preview and export resolutions.
-
-Every packaged model shall have a manifest with:
-
-```json
-{
-  "schema_version": 1,
-  "model_id": "org.uwcc.dicam-natural",
-  "model_version": "1.0.0",
-  "engine_compatibility": ">=1.0,<2.0",
-  "onnx_sha256": "<64 lowercase hex characters>",
-  "source_url": "https://github.com/hfarhaditolie/DICAM",
-  "code_license": "MIT",
-  "weights_license": "<verified SPDX identifier>",
-  "training_data_summary": "<provenance document identifier>",
-  "input": {
-    "layout": "NCHW",
-    "shape": [1, 3, 512, 512],
-    "color_space": "sRGB-linearized-to-model-contract",
-    "range": [0.0, 1.0]
-  },
-  "output": {
-    "layout": "NCHW",
-    "meaning": "reference corrected RGB",
-    "range": [0.0, 1.0]
-  }
-}
-```
-
-The final input normalization shall match the validated source model rather
-than the illustrative wording above; changing it requires a model-version
-change and renewed golden tests.
-
-### 5.2 Scene detection and sampling
-
-Analysis shall decode a maximum 960-pixel-long-edge proxy and perform:
-
-1. candidate cut detection from color-histogram distance and edge-change ratio;
-2. cut confirmation using adjacent-frame comparison;
-3. a mandatory sample at each shot's first and last decodable frame;
-4. regular samples at 2 Hz within each shot; and
-5. extra samples around rapid luminance or chroma changes.
-
-False cut detection is preferable to smoothing across a real cut. Shots shorter
-than 0.5 seconds may use one central sample. Cut thresholds shall be stored in
-the analysis configuration and covered by the golden corpus.
-
-### 5.3 Filter classification and signal assessment
-
-The classifier shall combine robust channel percentiles, neutral-candidate
-chromaticity, highlight chromaticity, red-channel clipping, and model features.
-It shall return `none`, `red`, `magenta`, or `unknown`, plus calibrated
-confidence. Confidence below 0.70 shall map to `unknown` and cause the UI to keep
-the `Auto` label with a confirmation warning.
-
-For each sample, signal assessment shall estimate channel clipping and noise
-floor from flat regions. If usable red dynamic range is under four stops or the
-red-channel signal-to-noise estimate is below 6 dB in midtones, red recovery
-shall be limited and a low-red-signal warning emitted. Already clipped red from
-a capture filter shall similarly constrain correction.
-
-### 5.4 Transform fitting
-
-For each sample:
-
-1. run the packaged model on the normalized proxy;
-2. pair source pixels with model-reference pixels, excluding clipped pixels,
-   specular highlights, high-gradient edges, and the noisiest 5%;
-3. fit a 17×17×17 RGB 3D LUT using robust loss;
-4. regularize the LUT toward identity, smooth neighboring cells, and require
-   monotonic neutral-axis luminance;
-5. constrain maximum exposure change to ±3 EV and per-channel gain to 8×;
-6. apply conservative saturation and gamut constraints; and
-7. compute confidence from fit residual, excluded-pixel ratio, signal quality,
-   model-distance indicators, and constraint activation.
-
-The fitted LUT, not the model image, is the automatic transform. At confidence
-below 0.40 the sample shall use the deterministic fallback. Confidence from
-0.40 through 0.69 shall blend fallback and ML-fitted transforms in proportion
-to confidence. Confidence of at least 0.70 shall use the constrained ML fit.
-
-The deterministic fallback shall use robust neutral-candidate selection,
-gray-world/white-patch blending, percentile exposure normalization, a bounded
-channel-balance matrix, and a filmic monotonic tone curve. It shall share the
-same constraints as ML-fitted transforms.
-
-### 5.5 Temporal stabilization
-
-LUT values and scalar fit parameters shall be stabilized within, never across,
-confirmed shots. The baseline stabilizer shall:
-
-- reject isolated values more than three median absolute deviations from a
-  five-sample neighborhood;
-- apply a one-second, timestamp-aware exponential smoothing constant forward
-  and backward for offline analysis;
-- reduce smoothing around confirmed gradual exposure changes rather than lag
-  them; and
-- interpolate stabilized sample LUTs tetrahedrally in color and linearly in
-  presentation time.
-
-Using forward and backward passes means complete analysis is non-causal. During
-progressive preview, provisional causal values shall be marked as provisional
-and replaced atomically as offline stabilization completes.
-
-### 5.6 Cache format
-
-Analysis data shall be stored in a compressed `.uwcc-analysis.npz` file with a
-small JSON header, shot table, timestamps, confidence, warnings, LUT knots,
-model/config hashes, and source fingerprint. Cache content is derived and may
-always be deleted. A project that cannot find or validate its cache shall retain
-manual edits and return to `Ready, not analyzed`.
-
-## 6. Manual correction math
-
-- Correction strength shall interpolate the automatic LUT toward an identity
-  LUT; 100–200% shall extrapolate the LUT displacement with gamut constraints.
-- Temperature and tint shall use a chromatic-adaptation transform with a
-  perceptually uniform control mapping, not direct RGB multiplication.
-- Exposure shall multiply scene-linear values by `2^EV`.
-- Tone controls shall compose into one monotonic spline to prevent stage-order
-  clipping. The implementation shall reject non-monotonic spline updates.
-- Hue and saturation shall operate in a perceptually uniform opponent-color
-  representation and preserve neutral pixels.
-- Dehaze shall be edge-aware and bounded. It shall not use a learned
-  full-resolution generator and shall not change alpha or geometry.
-- Sharpening shall use an edge-limited unsharp mask after the output transform,
-  suppress sharpening in noise-dominated regions, and never be included in
-  scopes unless `Scopes include sharpening` is selected.
-
-Parameter-to-math curves shall be versioned as `correction_graph_version`.
-Changing visible results for an existing parameter value requires a new graph
-version and migration behavior.
+| Concern | Current implementation |
+| --- | --- |
+| Language | CPython 3.12 or later |
+| UI | PySide6, with PyQt6 fallback; Qt Widgets and QPainter |
+| Numeric processing | NumPy float32; optional compiled C kernels |
+| Color transforms | Transfer functions and gamut matrices in `uwcc/color.py`; ACEScg scene-linear path and an optimized encoded Rec.709 LUT path |
+| Media I/O | Bounded FFmpeg/ffprobe subprocesses, argument arrays, no shell interpolation |
+| Vision | OpenCV for stabilization and optional DNN inference |
+| Neural inference | ONNX Runtime; CPU, CUDA, or Windows DirectML where supported |
+| Model conversion | Separate user-owned Python environment with PyTorch, ONNX, OpenCV, and ONNX Runtime |
+| Packaging | Ubuntu 26.04 Debian packages; PyInstaller Windows bundles and MSIX |
+| Tests | pytest; offscreen Qt and real FFmpeg round trips |
+
+PyAV, Qt Quick/QRhi, an embedded OpenColorIO configuration, and AppImage tooling
+are not current dependencies. Reviewed display management, dependency locks,
+SBOMs, and complete binary-license provenance remain release work. Optional
+runtime installation downloads dependencies; it does not modify the application's
+own Python environment. Consult `pyproject.toml`, Debian metadata, and the build
+scripts for the actual dependency declarations.
+
+## 3. Components and concurrency
+
+- `gui.py` owns the Qt Widgets workspace, worker threads, proxy playback, model
+  setup dialog, preview scopes, and undo/recovery interactions. Long operations
+  use `QThread` workers; analysis is not isolated in a separate worker process.
+- `media.py` probes sources, prepares orientation/range, reads bounded 16-bit RGB
+  pipes, and extracts source timestamps through FFmpeg/ffprobe.
+- `color.py`, `analysis.py`, and `enhance.py` share correction evaluation between
+  preview and export. `neural.py` and `ml.py` validate and run optional models.
+- `render.py` performs full-resolution rendering, ordered parallel color work,
+  audio muxing, output validation, and atomic publication.
+- `project.py` owns editing state, validated JSON, fingerprints, and presets.
+  `batch` CLI/GUI operations use the persistent `BatchQueue` in `jobs.py`.
+- `model_setup.py` owns explicit model/runtime preparation; `execution.py`
+  persists the chosen runtime and activates it at the next application start.
+- `cloud.py` sends explicitly requested proxy-frame advice requests and validates
+  bounded parameter proposals; the GUI asks the user to review a proposal.
+
+Native-library crashes are not currently isolated from the GUI process. A global
+memory-pressure manager, disk proxy cache, and concurrent-render preference are
+not implemented.
+
+## 4. Media, orientation, and color
+
+Supported profile identifiers are `auto`, `rec709`, `slog2`, `slog3`, `hlg`, and
+`pq`; exact labels are defined by `PROFILES` in `project.py`. Standard stream tags
+and supported embedded Sony gamma/gamut metadata supply detection evidence.
+Explicit Sony capture metadata takes precedence over generic tags. Ambiguous
+input requires a user choice before analysis/export. See
+[profile detection](profile-detection.md).
+
+Decoded RGB uses 16-bit transport into floating-point processing. The scene-linear
+working space is ACEScg; SDR analysis can instead produce encoded Rec.709 LUTs.
+Manual controls include Bradford temperature/tint adaptation, scene-linear
+exposure, luminance tone adjustments, chroma-plane hue/saturation, bounded local
+contrast, and output sharpening. This is not an OCIO-managed or calibrated
+monitor pipeline. Tone adjustments are not the originally proposed single
+validated monotonic spline. Deterministic timestamp-seeded dither is not an
+implemented export contract.
+
+The preview always targets SDR Rec.709, including a tone map for log/HDR input.
+Output intent is independent and defaults to Rec.709; HDR input does not
+automatically imply HDR export. HLG/PQ export requires HEVC or FFV1. DNxHR and
+ProRes are SDR master profiles in the current build. HDR monitor output and
+comprehensive log/HDR color validation remain open.
+
+Orientation honors source rotation metadata. Additional manual clockwise
+rotation is `0`, `90`, `180`, or `270`; `auto` can use the optional CPU RightWayUp
+Max INT8 model when metadata does not resolve orientation. Ten sampled frames
+produce one conservative decision, persisted in the project. Rotation geometry
+is shared by preview, analysis, finishing, and export. See
+[orientation evaluation](benchmarks/orientation.md).
+
+## 5. Automatic correction and optional models
+
+Analysis decodes a maximum-width 320-pixel proxy, detects cuts using histogram
+and frame differences, samples approximately every half second plus shot
+boundaries, and smooths generated parameters forward/backward within each shot.
+It reports progress but publishes a complete curve at completion; progressive
+partial-curve publication and calibrated confidence thresholds remain targets.
+
+The three automatic modes are adaptive levels/gray-edge white balance (`adaptive`,
+the default), local neural reference enhancement (`ai`), and legacy balance.
+UDnet V1 is the prepared enhancement model; DICAM is not the selected model.
+SDR neural references use regularized polynomial color fitting and temporally
+interpolated RGB LUTs. The log/HDR path retains constrained scene-linear matrix
+fitting. Learned references require aligned SDR Rec.709 source/reference clips;
+the fitted look is saved inline and is specific to that source.
+
+Low red-channel signal and clipping constrain correction and produce warnings.
+Confidence is heuristic, not a calibrated measurement of physical color accuracy.
+Missing built-in AI can fall back with a visible warning; explicitly selected
+invalid model manifests fail instead of being silently substituted.
+
+Models are optional and are not bundled in application packages. Explicit setup
+downloads pinned upstream weights, checks SHA-256, and converts locally where
+needed. UDnet/FastDVDnet use MIT declarations; RightWayUp declares Apache-2.0.
+Code/weight declarations must match actual provenance; a manifest alone does
+not establish redistribution rights. A reference manifest contains
+`schema_version`, `model_id`, `model_version`, `file`, `onnx_sha256`,
+`code_license`, `weights_license`, `color_space`, `layout`, and `size`.
+The reference interface is float32 NCHW RGB, encoded sRGB in [0,1], returning
+corrected RGB of matching shape. See [model setup](../models/README.md) and
+[the user-guide manifest example](user-guide.md#optional-onnx-model).
+
+## 6. Preview and full-resolution finishing
+
+Paused previews use up to 960 pixels; playback uses a 640-pixel proxy. Original
+Rec.709 display bypasses a redundant color conversion; log/HDR originals retain
+the SDR display transform. Playback follows a monotonic clock and starts optional
+Qt Multimedia source audio. Overdue frames can be skipped before correction to
+avoid accumulating delay. There is no automatic proxy-resolution adaptation or
+claim of audio-clock-authoritative synchronization.
+
+Pointwise preview correction uses up to four persistent CPU workers. Dehaze and
+sharpness stay on the full proxy frame to preserve spatial filtering. Preview
+decode and timestamp pools are capped at four threads. Scopes are calculated
+from displayed proxy images. See [preview performance](preview-performance.md)
+for historical measurements and their limits; full-source-rate playback and
+visible-window/audio synchronization are not certified.
+
+Export-only stabilization uses OpenCV background motion estimation, a
+seabed/lower-half or whole-frame region, and a fixed crop/zoom selected in a first
+pass. Conventional denoise uses FFmpeg `hqdn3d`; optional FastDVDnet uses a
+five-frame window, tiles/halos, and repeated endpoint frames. Neural denoise
+currently requires Rec.709. A single future-window preparation worker overlaps
+decode/conversion with sequential inference. See [AI workflows](ai-workflow.md).
 
 ## 7. Persistence contracts
 
-### 7.1 General rules
-
-All JSON shall be UTF-8, use ISO 8601 UTC timestamps, store paths as JSON
-strings, reject duplicate object keys, and preserve unknown extension fields
-under an `extensions` object. Readers shall reject a newer unsupported major
-schema and preserve older projects before migration.
-
-Writes shall use a temporary sibling file, flush file data, and atomically
-replace the destination. Autosave and queue state use the same rule.
-
-### 7.2 Source fingerprint
-
-The quick fingerprint shall contain canonical size, modification time, and
-SHA-256 hashes of the first and last 4 MiB. A full-file SHA-256 may be computed
-on demand. Cache reuse requires all quick-fingerprint fields to match. Relinking
-after a mismatch invalidates analysis even when the user confirms the source.
-
-### 7.3 Project schema
-
-The normative top-level shape is:
+`project.py` is the serializer authority. Current projects use schema 1, not the
+original planned v1 document with `manual`, `color`, `input`, or external NPZ
+analysis-cache fields. The top-level shape is:
 
 ```json
 {
   "schema_version": 1,
-  "application_version": "1.0.0",
-  "created_at": "2026-10-22T12:00:00Z",
-  "modified_at": "2026-10-22T12:00:00Z",
-  "source": {
-    "path": "relative/or/absolute/source.mp4",
-    "fingerprint": {
-      "size": 0,
-      "mtime_ns": 0,
-      "first_4m_sha256": "<sha256>",
-      "last_4m_sha256": "<sha256>"
-    },
-    "video_stream_index": 0,
-    "audio_stream_indexes": [1]
+  "application_version": "0.4.2",
+  "source": "relative/or/absolute/source.mp4",
+  "source_fingerprint": {
+    "size": 0,
+    "mtime_ns": 0,
+    "first_4m_sha256": "<sha256>",
+    "last_4m_sha256": "<sha256>"
   },
-  "input": {
-    "profile": "sony_slog3_sgamut3cine",
-    "range": "limited",
-    "filter_policy": "auto",
-    "resolved_filter": "red"
+  "grade": {
+    "values": {"strength": 100},
+    "keyframes": {"strength": [{"time": "1/2", "value": 80}]},
+    "input_profile": "rec709",
+    "output_profile": "rec709",
+    "filter_hint": "auto",
+    "auto_method": "adaptive"
   },
-  "color": {
-    "ocio_config_id": "uwcc-aces-1",
-    "ocio_config_sha256": "<sha256>",
-    "correction_graph_version": 1
-  },
-  "analysis": {
-    "state": "complete",
-    "cache_path": "source.uwcc-analysis.npz",
-    "cache_sha256": "<sha256>",
-    "model_id": "org.uwcc.dicam-natural",
-    "model_version": "1.0.0"
-  },
-  "manual": {
-    "base_values": {},
-    "keyframes": []
-  },
-  "output_intent": {
-    "profile": "rec709_gamma24",
-    "render_profile": "dnxhr_hqx_master"
-  },
-  "extensions": {}
+  "analysis": null,
+  "orientation": null
 }
 ```
 
-Keyframes shall contain a stable UUID, parameter name, rational source
-timestamp, and value. Timestamps shall use `{ "numerator": n,
-"denominator": d }`; floating-point seconds are forbidden in persisted edit
-decisions.
+This shows structure, not a ready-to-load project: fingerprints must match a real
+source. Missing grade fields receive validated defaults. Grade also stores
+stabilization, denoise engine/strength, rotation, and video encoder/decoder
+choices. Keyframe timestamps are rational strings, not numerator/denominator
+objects or UUID records. Analysis is an optional validated inline object with
+`version: 1`; its sample times are numeric seconds. Manual keyframes interpolate
+linearly and hold endpoint values outside their interval.
 
-### 7.4 Preset schema
+JSON reads reject duplicate keys, non-finite constants, unsupported schema
+versions, oversized files (32 MiB), and invalid values/keyframes. Writes use a
+temporary sibling, flush/fsync, and atomic replacement. Unknown extension fields
+are not guaranteed to round-trip. Fingerprints use size, mtime, and first/last
+4 MiB hashes. Explicit source replacement invalidates analysis/orientation when
+the fingerprint differs. Source relinking is available via CLI; a complete GUI
+relink flow remains open. Imported local model paths are not automatically
+trusted; saved analysis remains usable without the original model.
 
-`.uwcc-preset.json` shall include schema/application compatibility, name,
-description, input policy, auto settings, manual base values, optional manual
-keyframe values normalized to a 0–1 clip duration, output intent, and extensions.
-The default UI saves no keyframes in a preset; including normalized keyframes
-requires an explicit `Include animation` choice.
+Presets use `schema_version: 1`, `kind: uwcc-preset`, `name`, and `grade`.
+Saving clears keyframes and the selected enhancement manifest; presets do not
+contain source paths or automatic analysis. Queue state and recovery data live
+in the user data directory. Recovery autosaves follow a two-second edit delay.
+Batch pause cancels the current operation; resume restarts that item, rather
+than continuing from a frame checkpoint. See [the user guide](user-guide.md).
 
-### 7.5 Queue schema
+## 8. Export and acceleration
 
-Queue state shall live in the user data directory, not in a project. It shall
-contain stable job IDs, source fingerprints, preset snapshot, destination,
-render profile snapshot, state, progress, validation result, timestamps, and a
-redacted diagnostic reference. On restart, `Analyzing` and `Rendering` jobs
-become `Paused` and require an explicit resume.
+| Profile | Video | Audio |
+| --- | --- | --- |
+| `h264` | MP4, libx264, CRF 17, fast, yuv420p | AAC; compatible AAC can be copied |
+| `hevc` | MP4, libx265, CRF 18, fast, yuv420p10le, hvc1 | AAC; compatible AAC can be copied |
+| `dnxhr` | MOV, DNxHR HQX, yuv422p10le | PCM signed 24-bit |
+| `prores` | MOV, prores_ks profile 3, yuv422p10le | PCM signed 24-bit |
+| `ffv1` | Matroska, FFV1 level 3, gbrp16le | FLAC |
 
-## 8. Export implementation
+CPU encoding/decoding are defaults. Optional runtime-tested NVENC H.264/HEVC and
+NVDEC are explicit video-codec choices, independent of the AI execution runtime.
+GPU decode downloads frames into the CPU pipeline. Fallback behavior depends on
+the selected codec policy. See [video acceleration](video-acceleration.md).
 
-### 8.1 Frame and audio timing
+Rendering evaluates grades against source timestamps and attempts to retain
+variable cadence and audio offset. Before publication, it validates frame count,
+duration, audio-stream count, and color tags. Exact final-packet duration on
+unusual variable-rate sources and stream-level audio-offset validation remain
+open. The FFmpeg 9.0 removal of `-filter_script:v` caused the historical Windows
+VFR failures; the current VFR path uses the long-supported inline `-vf` graph
+and a separate timestamp command file in the encoder's working directory.
+This avoids version-specific filter-script options and path-escaping problems.
+The implemented
+checks do not establish all of section 12's media gates.
 
-Rendering shall iterate source presentation timestamps, not assume a constant
-frame interval. Correction parameters shall evaluate at each source PTS. Output
-defaults to the source time base and cadence. Audio shall preserve its initial
-offset; mux validation shall compare first/last timestamps and total duration.
+Temporary work is isolated and a validated output is published atomically.
+Existing output requires explicit overwrite authorization. Metadata is copied
+where representable, location fields are cleared, and rotation tags are reset
+after pixel rotation. A configurable private-metadata UI, complete unknown-stream
+reporting, and free-space estimation remain targets.
 
-### 8.2 Normative codec settings
+## 9. Resource limits and performance
 
-Defaults shall be:
+Color export requests up to four workers, bounded by CPU affinity and a 768 MiB
+estimated color-working budget (`UWCC_RENDER_MEMORY_MB`). This is not a hard
+process RSS limit and excludes additional neural-window/network allocations.
+`UWCC_RENDER_WORKERS` allows 1–16; `UWCC_THREADS` allows 1–32 within affinity.
+Codec pools normally use up to eight threads and filters up to four.
+Temporal processing precedes the ordered color-worker pool. The optional C
+extension accelerates tetrahedral LUT evaluation and fused SDR conversion;
+NumPy is the fallback. `UWCC_DENOISE_PREFETCH=0` disables denoise prefetch.
 
-- DNxHR HQX: 10-bit 4:2:2, source dimensions/cadence, PCM signed 24-bit.
-- ProRes 422 HQ: `prores_ks` profile 3, 10-bit 4:2:2, PCM signed 24-bit.
-- FFV1: version 3, level 3, slice CRC enabled, 10/16-bit RGB or 4:4:4 selected
-  to avoid an additional chroma loss, FLAC audio.
-- H.264 SDR: libx264 high profile, CRF 17 default, 8-bit 4:2:0, `faststart`, AAC
-  320 kbit/s when audio cannot be copied.
-- HEVC SDR: libx265 Main10, CRF 18 default, 10-bit 4:2:0, AAC 320 kbit/s.
-- HEVC HDR: libx265 Main10, CRF 18 default, 10-bit 4:2:0, Rec.2020 non-constant
-  matrix with the selected HLG or PQ transfer and matching container tags.
+Repository benchmarks describe specific clips/machines, not general guarantees.
+Global RAM/disk budgets, deadline guarantees for all cancellation paths, GPU
+color shaders, and certified preview throughput remain targets.
 
-The UI may expose quality presets but shall always show resulting codec, bit
-depth, chroma sampling, color tags, and estimated size. Hardware encoders are
-non-normative and must pass the same metadata and timing tests.
+## 10. Platforms, packaging, and runtime setup
 
-### 8.3 Output validation
+Ubuntu 26.04 amd64 uses `.deb` packages (`uwcc`, optional `uwcc-model-tools`,
+`uwcc-nvidia`) and PPA installation. Windows uses a PyInstaller onedir bundle,
+a windowed `uwcc-gui.exe`, a console `uwcc.exe`, and Microsoft Store MSIX
+packaging. Windows Store distribution is current, rather than a deferred port.
+See [Ubuntu packaging](ubuntu-packaging.md) and
+[Windows packaging](windows-packaging.md).
 
-Before atomic rename, UWCC shall re-probe the `.partial` file and require:
+User data uses XDG directories on Linux and `%LOCALAPPDATA%\uwcc` on Windows.
+Models default to the `models` subdirectory, with `UWCC_MODEL_DIR` override.
+Private converter runtimes live below `runtimes`; frozen Windows setup downloads
+an official embeddable Python. CPU/CUDA/DirectML selections are persisted and
+need an application restart. DirectML conversion uses CPU PyTorch; CUDA uses
+CUDA-enabled PyTorch. Drivers remain user-installed prerequisites. Setup is
+intended to work as a standard user, without writing into the installed package.
 
-- a decodable video stream with expected codec, dimensions, and color tags;
-- expected frame count for constant-rate sources, or matching start/end PTS for
-  variable-rate sources;
-- duration within one source-frame interval;
-- all selected audio streams present with start offset within 20 ms;
-- no decode error in first, middle, and last validation frames; and
-- a nonzero file size consistent with the encoded streams.
+The 2026-11-08 standard-user Store report shows converter `python.exe` startup
+failure `0xC0000022`. The 0.4.2 DLL-search isolation patch still requires
+a rebuilt-package retest on the affected account; the root cause is not confirmed.
+Do not treat packaging smoke tests as proof of successful standard-user model
+bootstrap or hardware-validated DirectML.
 
-Failed validation marks the job failed and retains the diagnostic probe.
+## 11. Privacy, security, and release evidence
 
-## 9. Concurrency, performance, and resource limits
+Ordinary correction, playback, and export run offline and require no UWCC account.
+Startup may offer model setup, but a download requires explicit user action.
+Model/runtime setup contacts upstream hosts. Optional cloud advice sends up to
+three downscaled JPEG proxy frames and a grading request directly to the user's
+chosen OpenAI/Anthropic endpoint with an environment-provided API key. Proposals
+are range/structure-validated; credentials are excluded from projects/presets.
+See [privacy policy](../PRIVACY.md) for the user-facing policy.
 
-- The UI thread shall never wait synchronously for probe, decode, inference,
-  cache I/O, scopes, or render completion.
-- Decode and render workers shall use bounded queues; unbounded frame buffering
-  is forbidden.
-- The default memory budget shall be the lesser of 50% of physical RAM or
-  8 GiB, adjustable down to 2 GiB.
-- Proxy cache eviction shall be least-recently-used and honor a default 20 GiB
-  disk budget.
-- Cancel requests shall be observed within 500 ms during analysis and within
-  two seconds or one encoder GOP during rendering, whichever is longer.
-- GPU provider order shall be configured explicitly and logged. CPU shall be
-  the final provider and the normative result within numeric tolerance.
+Current CI runs on pushes: Ubuntu tests, Debian build/install smoke tests, and
+Windows packaging/model/runtime unit tests plus frozen-bundle smoke tests. Tags
+publish package artifacts after those jobs. Scheduled GPU/corpus benchmarking,
+full Windows test-suite certification, mandatory lint/type checking, SBOM/license
+automation, fuzzing, and manual release sign-off are targets, not existing CI
+coverage. Existing changelog test results are historical evidence, not fresh
+verification of the current working tree.
 
-Reference performance hardware is Ubuntu 26.04, AMD Ryzen 7 5700X, 32 GiB RAM,
-and NVIDIA RTX 3060 12 GiB using the installed system driver. After analysis,
-the application shall sustain 24 fps at a 1920×1080 preview proxy for supported
-4K sources, with p95 manual-control response below 100 ms. CPU-only operation on
-the same CPU shall sustain 8 fps at 1280×720 proxy and complete every workflow,
-even when it cannot play corrected 4K in real time.
-
-## 10. Platform and packaging
-
-### 10.1 Ubuntu v1
-
-The release artifact shall be an x86-64 AppImage tested on a clean Ubuntu 26.04
-installation. It shall bundle the Python runtime, application dependencies,
-OpenColorIO configuration, verified model, and a reproducible GPL-compatible
-FFmpeg build. It shall not replace system libraries globally or require root.
-
-User directories shall follow the XDG base-directory specification. The app
-shall tolerate spaces, non-ASCII characters, removable volumes, and paths longer
-than 260 characters.
-
-### 10.2 Windows portability
-
-Core modules shall use `pathlib`, avoid POSIX-only process assumptions, and keep
-platform integrations behind interfaces. CI shall run schema, correction-graph,
-and path tests on Windows 11. A packaged Windows application, DirectML/WinML
-provider, code signing, and installer are deferred and are not v1 gates.
-
-### 10.3 Open-source and provenance gate
-
-The release pipeline shall:
-
-1. generate CycloneDX SBOMs for Python, native, model, and bundled tool assets;
-2. verify each asset against a reviewed SPDX allowlist;
-3. fail on an unknown license, missing model-weight license, or network-fetched
-   unpinned artifact;
-4. include source offers/notices required by bundled licenses;
-5. include the full canonical GPLv3 text; and
-6. publish checksums and reproducible build inputs.
-
-Installed proprietary GPU drivers may accelerate a run through a supported
-provider. UWCC shall neither bundle nor require CUDA, proprietary codec SDKs,
-or a proprietary runtime. CPU software paths remain the supported baseline.
-
-## 11. Security and privacy
-
-- Media and project parsers shall treat all input as untrusted.
-- FFmpeg and native dependencies shall be kept on supported security branches.
-- Worker processes shall receive only required file descriptors and paths.
-- No shell interpolation shall be used for media commands.
-- JSON size, nesting, array length, and numeric ranges shall be bounded before
-  allocation.
-- Model and analysis files shall be hash-verified before loading.
-- Project-relative paths shall not be allowed to escape an explicitly selected
-  project directory when resolving adjacent caches.
-- Diagnostic bundles require preview and confirmation of included paths and
-  metadata; decoded frames are excluded.
-- The shipped application shall contain no analytics, crash-upload, update,
-  advertisement, authentication, or remote-model endpoint.
-
-## 12. Verification plan
+## 12. v1 verification targets (not a certification of 0.4.2)
 
 ### 12.1 Test corpus
 
@@ -627,7 +382,7 @@ GPU failure with CPU retry, and validated atomic output completion.
 
 ### 12.7 CI and release gates
 
-Pull requests shall run linting, type checks, unit tests, schema fixtures,
+The target CI policy is to run linting, type checks, unit tests, schema fixtures,
 CPU golden frames, and short media round trips. Scheduled CI shall run the full
 corpus, GPU/CPU comparison, performance benchmarks, fuzzed parsers, and Windows
 portability tests. A release candidate additionally requires clean Ubuntu 26.04

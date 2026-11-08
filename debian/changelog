@@ -1,3 +1,15 @@
+uwcc (0.4.2-1~ppa1) resolute; urgency=medium
+
+  * Isolate frozen Windows model converter DLL/PATH search and working directory.
+  * Include Python package sources for external CUDA graph validation.
+  * Add converter launch and isolated packaged validation regression coverage.
+  * Refresh specifications and user guidance; retire duplicated status checklist.
+  * Use compatible inline FFmpeg VFR filters and relative timestamp commands.
+  * Handle Linux-only NVIDIA tests while keeping shared path tests portable.
+  * Verify Windows suite: 228 passed, 23 skipped; retain hardware setup caveats.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Sun, 08 Nov 2026 12:00:00 +0100
+
 uwcc (0.4.1-1~ppa1) resolute; urgency=medium
 
   * Speed up Rec.709 previews and parallelize pointwise preview correction.

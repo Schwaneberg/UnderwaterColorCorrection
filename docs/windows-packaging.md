@@ -54,6 +54,12 @@ bundle, open `uwcc-gui.exe` to launch the desktop app. The `uwcc.exe` executable
 and installed `uwcc` command alias retain a console for command-line output
 and automation. Both executables share the bundled runtime and dependencies.
 
+The bundle also includes pure Python `uwcc/` sources beside `tools/`. The separate
+model-converter Python needs these sources to import shared inference and
+manifest helpers during CUDA graph validation; it cannot read application
+modules from PyInstaller's archive. Native extensions/DLLs are not copied into
+this source package, so the converter uses its own installed native dependencies.
+
 The build refuses to run unless OpenCV (`cv2`) and ONNX Runtime are installed
 in the build environment, so stabilization and local inference are never
 silently omitted. Both are bundled with PyInstaller `--collect-all` (including
@@ -75,6 +81,27 @@ attaches the `.msix` package, portable `.zip`, and Ubuntu `.deb` packages to a
 GitHub Release.
 
 ## Publishing to the Microsoft Store
+
+### Standard-user model setup verification
+
+Test the installed MSIX under a standard Windows account with no separate
+Python installation. In **AI models**, install a CPU or DirectML runtime and
+the full model set, restart UWCC, and confirm inference works. Repeat setup to
+exercise reuse of the downloaded runtime.
+
+The external converter Python must not inherit PyInstaller's DLL directory or
+bundle entries on `PATH`. Model setup temporarily clears the DLL directory and
+restores it after launching the child; the child's working directory is its
+own runtime directory. This avoids loading bundled native libraries from the
+Store installation into the separate converter runtime.
+
+If `python.exe` fails at startup with `0xC0000022` (access denied), record the
+executable path and inspect Windows application/security logs or a Process
+Monitor trace for denied executable/DLL access. The status alone does not
+identify which file was denied. Model setup uses a per-user runtime and should
+not require administrator privileges.
+
+## Store submission
 
 1. Register a developer account in [Microsoft Partner Center](https://partner.microsoft.com/dashboard)
    and reserve the application name (**Underwater Color Correction**).

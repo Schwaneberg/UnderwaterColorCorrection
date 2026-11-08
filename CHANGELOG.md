@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.4.2 — 2026-11-08
+
+### Fixed
+
+- Isolate external model-converter Python launches from the frozen Windows
+  application's DLL directory and bundled PATH entries. Restore the parent DLL
+  search directory after launch, including when process creation fails, and
+  correctly handle an empty DLL directory.
+- Use the converter runtime directory as the external child's working directory.
+  This addresses a possible cause of the standard-user Microsoft Store
+  `python.exe` startup failure (`0xC0000022`); affected-machine confirmation is
+  still required.
+- Include pure Python `uwcc` sources alongside Windows model tools so the
+  separate converter runtime can import inference/manifest helpers during CUDA
+  FastDVDnet validation, fixing `ModuleNotFoundError: No module named 'uwcc'`.
+- Use the long-supported `-vf` option for the short VFR filter graph instead of
+  deprecated `-filter_script:v`, removed by FFmpeg 9.0. Keep per-frame timestamp
+  commands in a separate file so command length does not grow with the clip.
+- Resolve the timestamp command file relative to the encoder's private working
+  directory, avoiding filter-language escaping of Windows drive letters and
+  destination folders with spaces, apostrophes, or non-ASCII characters.
+
+### Tests
+
+- Mark Linux `uwcc-nvidia` setup/launcher tests as Linux-only, preserving their
+  Ubuntu CI coverage while skipping POSIX assumptions on Windows.
+- Keep runtime-path tests cross-platform: verify XDG data paths on Linux and
+  LocalAppData on Windows, plus explicit runtime overrides without disk writes.
+- Add converter launch isolation/restoration and source-only packaging coverage,
+  including an isolated-interpreter CUDA-validation prerequisite check.
+- Full Windows `.venv` suite with FFmpeg 9.0.1: **228 passed, 23 skipped, no
+  failures/errors**. Both VFR timestamp round trips pass, including finishing
+  effects and a destination containing spaces, an apostrophe, and non-ASCII text.
+- Documentation file links and Git diff whitespace checks passed.
+
+### Documentation
+
+- Refresh product and technical specifications against the current implementation,
+  distinguishing implemented behavior from outstanding v1 acceptance targets.
+- Document Windows distribution, explicit model/runtime setup, optional cloud
+  advice, actual project/preset formats, and known validation limits.
+- Retire the duplicated implementation-status checklist in favor of maintained
+  specification sections; keep its path as a compatibility pointer.
+- Label preview benchmarks and recorded test results as historical evidence.
+- Ignore the local Windows Store packaging helper script.
+
+### Remaining validation
+
+- A rebuilt MSIX still needs standard-user model setup verification on the
+  affected PC. The reported access-denied root cause is not yet confirmed.
+- Actual CUDA graph accuracy validation and DirectML hardware validation remain
+  separate from the automated prerequisite and packaging tests.
+- Older FFmpeg binaries and Linux execution were not tested locally; the filter
+  graph uses established `-vf`/`sendcmd` syntax shared with earlier releases.
+  Linux tests remain enabled in the existing Ubuntu CI job.
+
 ## 0.4.1 — 2026-11-06
 
 ### Improved

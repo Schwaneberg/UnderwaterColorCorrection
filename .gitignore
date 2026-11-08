@@ -38,3 +38,4 @@ benchmarks/results/
 
 # Local camera footage for manual benchmarks
 tests/clips/
+build-windows-store-package.ps1

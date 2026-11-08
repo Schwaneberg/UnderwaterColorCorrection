@@ -1,10 +1,57 @@
 from pathlib import Path
+from contextlib import contextmanager
 import sys
 from types import SimpleNamespace
 
 import pytest
 
 from uwcc import model_setup
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows DLL search paths")
+@pytest.mark.parametrize("fails", [False, True])
+def test_frozen_converter_isolates_bundle_paths_and_restores_dll_search(tmp_path, monkeypatch, fails):
+    bundle = tmp_path / "WindowsApps" / "UWCC"
+    converter = tmp_path / "user runtime" / "python.exe"
+    system = tmp_path / "system"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(bundle / "uwcc.exe"))
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle / "_internal"), raising=False)
+    original = {"PATH": model_setup.os.pathsep.join(map(str, [bundle, bundle / "_internal" / "PySide6", system])),
+                "UWCC_INFERENCE_DEVICE": "directml"}
+    events = []
+
+    @contextmanager
+    def dll_search():
+        events.append("clear")
+        try:
+            yield
+        finally:
+            events.append("restore")
+
+    def launch(args, **kwargs):
+        assert events == ["clear"]
+        assert kwargs["env"] == {"PATH": str(system), "UWCC_INFERENCE_DEVICE": "directml"}
+        assert kwargs["cwd"] == str(converter.parent)
+        if fails:
+            raise OSError("launch failed")
+        return "child"
+
+    monkeypatch.setattr(model_setup, "_system_dll_search", dll_search)
+    if fails:
+        with pytest.raises(OSError, match="launch failed"):
+            model_setup._converter_process(launch, [str(converter)], env=original)
+    else:
+        assert model_setup._converter_process(launch, [str(converter)], env=original) == "child"
+    assert events == ["clear", "restore"]
+    assert str(bundle) in original["PATH"]
+
+
+def test_frozen_app_self_launch_keeps_bundle_environment(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    calls = []
+    model_setup._converter_process(lambda args, **kwargs: calls.append(kwargs), [sys.executable])
+    assert calls == [{}]
 
 
 @pytest.mark.parametrize("command,script", [("prepare", "prepare_models.py"),

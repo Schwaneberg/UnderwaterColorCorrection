@@ -133,6 +133,52 @@ def test_msix_layout_generates_valid_manifest_and_assets(build_windows, tmp_path
         assert (layout_dir / "Assets" / asset).is_file()
 
 
+def test_support_files_include_python_sources_without_native_binaries(build_windows, tmp_path):
+    source = tmp_path / "source"
+    (source / "tools").mkdir(parents=True)
+    (source / "uwcc").mkdir()
+    (source / "tools/validate_gpu_denoise.py").write_text("# validator\n")
+    (source / "uwcc/__init__.py").write_text("# package\n")
+    (source / "uwcc/neural.py").write_text("# inference\n")
+    for name in ("_native.pyd", "python312.dll", "__pycache__/neural.pyc"):
+        path = source / "uwcc" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"not converter dependencies")
+    bundle = tmp_path / "installed app"
+    build_windows.copy_support_files(source, bundle)
+    assert (bundle / "tools/validate_gpu_denoise.py").is_file()
+    assert (bundle / "uwcc/__init__.py").is_file()
+    assert (bundle / "uwcc/neural.py").is_file()
+    assert sorted(p.suffix for p in (bundle / "uwcc").rglob("*") if p.is_file()) == [".py", ".py"]
+
+
+def test_packaged_gpu_validation_imports_uwcc_in_isolated_python(build_windows, tmp_path):
+    import subprocess
+    import sys
+
+    bundle = tmp_path / "installed app"
+    source = Path(__file__).resolve().parents[1]
+    build_windows.copy_support_files(source, bundle)
+    # No installed uwcc, source checkout, CUDA driver, or model is needed.
+    # Reaching the provider diagnostic proves imports work in the staged layout.
+    code = (
+        "import runpy, sys, types; "
+        "sys.modules['onnxruntime'] = types.SimpleNamespace("
+        "get_available_providers=lambda: ['CPUExecutionProvider']); "
+        "script = sys.argv[1]; sys.argv = [script]; "
+        "runpy.run_path(script, run_name='__main__')"
+    )
+    env = os.environ.copy()
+    env.pop("UWCC_INFERENCE_DEVICE", None)
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", code, str(bundle / "tools/validate_gpu_denoise.py")],
+        cwd=tmp_path, env=env, capture_output=True, text=True,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "no CUDA execution provider" in result.stderr
+    assert "ModuleNotFoundError" not in result.stderr
+
+
 def test_bundle_includes_windowed_gui_and_console_cli(build_windows, tmp_path, monkeypatch):
     source = tmp_path / "source"
     source.mkdir()

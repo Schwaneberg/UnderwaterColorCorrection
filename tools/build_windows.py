@@ -274,6 +274,14 @@ def copy_support_files(source_root: Path, bundle_dir: Path):
     tools_dest.mkdir(parents=True, exist_ok=True)
     for script in sorted((source_root / "tools").glob("*.py")):
         shutil.copy2(script, tools_dest / script.name)
+    # The private converter Python cannot import from PyInstaller's archive.
+    # GPU validation imports uwcc.neural and its shared manifest/runtime helpers.
+    # Ship pure Python sources beside tools, without native binaries from the
+    # application's interpreter (which may have a different ABI).
+    for source in sorted((source_root / "uwcc").rglob("*.py")):
+        target = bundle_dir / "uwcc" / source.relative_to(source_root / "uwcc")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
     for item in ("LICENSE", "README.md"):
         src = source_root / item
         if src.is_file():

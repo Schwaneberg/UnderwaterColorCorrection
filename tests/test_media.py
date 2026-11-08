@@ -82,7 +82,9 @@ def test_variable_frame_rate_keeps_timestamps(tmp_path, finishing):
     assert frame_timing(info)[1]
     project = Project(str(source), Grade(input_profile="rec709", stabilize=finishing,
                                          denoise=3 if finishing else 0), fingerprint(source))
-    target = tmp_path/"vfr result.mp4"
+    output_dir = tmp_path/"diver's exports ü"
+    output_dir.mkdir()
+    target = output_dir/"vfr result.mp4"
     render(project, target)
     source_times = list(frame_timestamps(info))
     result_times = list(frame_timestamps(probe(target)))

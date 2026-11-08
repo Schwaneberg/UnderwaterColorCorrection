@@ -1,5 +1,12 @@
 # Preview playback performance
 
+Baseline: 0.4.1 preview changes (2026-11-06). Documentation reviewed 2026-11-08.
+The numbers below are historical measurements, not a fresh benchmark run or a
+general playback guarantee. See [current coverage and open v1 work](product-spec.md#11-current-coverage-and-open-v1-work)
+for release limitations and [the technical specification](technical-spec.md#6-preview-and-full-resolution-finishing)
+for current playback behavior. The example commands assume an existing source
+environment with the optional compiled kernels.
+
 Measured on the local Intel Core i5-8250U with Python 3.14, at 640×360 proxy
 resolution. These synthetic measurements isolate costs; they do not guarantee
 the same rate for camera codecs, HDR/log material, or GUI painting.
@@ -21,8 +28,8 @@ For a four-second, 1280×720 H.264 test source at 30 fps, the previous processin
 path needed 9.20 seconds for 120 frames even without pacing. Updated playback
 presented 113 frames through timestamp 3.967 in 4.20 seconds, including startup,
 decoding, timestamp extraction, correction, and image conversion. This benchmark
-does not paint the widgets or play audio. Late frames now skip correction to
-avoid accumulating delay against the playback/audio clock.
+does not paint the widgets or play audio. Overdue frames are dropped before
+correction to avoid accumulating delay against the playback/audio clock.
 
 The source checkout initially lacked `uwcc._native`. Build it with
 `python setup.py build_ext --inplace`; packaged Windows releases already include
@@ -71,7 +78,7 @@ For a bounded real-clip benchmark, use:
 
 Add `--skip-legacy` to omit the slow previous-path clip comparison.
 
-Validation: playback tests cover normal cadence, skipping late frames, direct
+Recorded validation for the 0.4.1 changes: playback tests covered normal cadence, skipping late frames, direct
 Rec.709 originals, and unchanged log/HDR display transforms. Color and native
-kernel parity tests pass. The wider media checks still encounter the documented
+kernel parity tests passed. The wider media checks encountered the documented
 Windows variable-frame-rate export failures in `tests/test_media.py`.
