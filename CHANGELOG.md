@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.1 — 2026-11-09
+
+### Fixed
+
+- Resolve default Windows user storage to its physical filesystem path before
+  launching model-converter Python. MSIX AppData redirection can otherwise leave
+  the external interpreter unable to find the downloaded `get-pip.py`, despite
+  the Store application seeing it. Runtime and model paths share the resolved
+  root. Backend-specific runtime overrides are resolved before launch as well.
+- Installed diagnostic MSIX reproduced the logical-path failure and confirmed
+  successful pip bootstrap using physical paths in a fresh embedded runtime.
+  Full model installation in a rebuilt UWCC package remains to be verified.
+
+### Validation
+
+- Windows `.venv` full suite: 305 passed, 15 skipped. Regression coverage
+  includes resolved storage roots and backend-specific converter overrides.
+
 ## 0.5.0 — 2026-11-08
 
 ### Performance

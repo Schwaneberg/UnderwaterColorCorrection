@@ -55,6 +55,11 @@ def user_directory(kind="data", *, create=True) -> Path:
     result = root / "uwcc"
     if create:
         result.mkdir(parents=True, exist_ok=True)
+    # MSIX can redirect AppData writes into the package's LocalCache. Hand
+    # external interpreters the physical path, not the app's virtual alias.
+    # On Windows resolve(strict=True) queries the final path of an open handle.
+    if os.name == "nt" and result.exists():
+        result = result.resolve(strict=True)
     return result
 
 

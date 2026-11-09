@@ -124,7 +124,18 @@ The setup repair path does this automatically; ordinary virtual environments
 continue to use `ensurepip`. This recovery fix is included in 0.4.3. After
 installing that version, retry **Prepare models** with automatic runtime
 installation enabled. It does not require deleting prepared models or installing
-system Python. A retry on the affected standard-user PC remains to be verified.
+system Python.
+
+The affected Store PC still failed in 0.5.0: external Python reported that
+`get-pip.py` did not exist. MSIX can redirect AppData writes into a package's
+`LocalCache`, so the app and an external interpreter may see different files at
+the same logical path. The current fix creates the default UWCC storage root
+and resolves its physical Windows path before selecting runtime and model
+directories. Runtime overrides are resolved before interpreter launch too.
+The installed diagnostic MSIX reproduced the missing-file failure with logical
+paths and successfully installed pip with physical paths in a fresh runtime.
+See [the diagnostic report](store-path-probe.md). Full model setup still needs
+testing in a rebuilt UWCC package; the diagnostic did not install ML packages.
 
 ## Store submission
 

@@ -50,7 +50,7 @@ def converter_environment_path():
     if override:
         return Path(override).expanduser()
     abi = f"{sys.version_info.major}.{sys.version_info.minor}"
-    return user_directory(create=False) / "runtimes" / f"converter-py{abi}"
+    return user_directory() / "runtimes" / f"converter-py{abi}"
 
 
 def _venv_python(env_path: Path) -> Path:
@@ -297,6 +297,11 @@ def ensure_converter_python(bootstrap=True, cancel=None, progress=None, backend=
     destination = converter_environment_path()
     if backend:
         destination = destination.with_name(destination.name + f"-{backend}")
+    # Also cover UWCC_CONVERTER_ENV overrides and pre-existing runtimes. The
+    # external interpreter must use the same physical directory we write to.
+    if os.name == "nt" and (bootstrap or destination.exists()):
+        destination.mkdir(parents=True, exist_ok=True)
+        destination = destination.resolve(strict=True)
     python = _venv_python(destination)
     validation = CONVERTER_CHECK
     if backend:
@@ -381,6 +386,9 @@ def run_setup(action="all", models_dir=None, bootstrap_converter=True, cancel=No
     if backend is not None and action in ("prepare-gpu", "validate-gpu") and backend != "cuda":
         raise UWCCError("Optional CUDA graphs require NVIDIA CUDA. CPU and DirectML use the standard models.")
     directory = (Path(models_dir) if models_dir else model_directory()).expanduser()
+    if os.name == "nt":
+        directory.mkdir(parents=True, exist_ok=True)
+        directory = directory.resolve(strict=True)
     if action == "runtime":
         if backend is None:
             raise UWCCError("Choose an execution backend to install its runtime.")

@@ -8,6 +8,68 @@ import pytest
 from uwcc import model_setup
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows MSIX AppData paths")
+def test_converter_and_models_use_physical_appdata_path(tmp_path, monkeypatch):
+    from uwcc import project
+
+    virtual = tmp_path / "Local" / "uwcc"
+    physical = tmp_path / "Packages" / "UWCC" / "LocalCache" / "Local" / "uwcc"
+    physical.mkdir(parents=True)
+    monkeypatch.setenv("LOCALAPPDATA", str(virtual.parent))
+    monkeypatch.delenv("UWCC_CONVERTER_ENV", raising=False)
+    monkeypatch.delenv("UWCC_MODEL_DIR", raising=False)
+    original_resolve = Path.resolve
+    resolutions = []
+
+    def resolve(path, *, strict=False):
+        if path == virtual:
+            assert strict
+            assert path.is_dir()  # Must create the directory before resolving it.
+            resolutions.append(path)
+            return physical
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    runtime = model_setup.converter_environment_path()
+    assert runtime.parent == physical / "runtimes"
+    assert project.model_directory() == physical / "models"
+    assert project.user_directory(create=False) == physical
+    assert len(resolutions) == 3
+
+
+def test_converter_storage_override_is_preserved(tmp_path, monkeypatch):
+    monkeypatch.setenv("UWCC_CONVERTER_ENV", str(tmp_path / "custom runtime"))
+    assert model_setup.converter_environment_path() == tmp_path / "custom runtime"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows MSIX AppData paths")
+def test_converter_launch_resolves_backend_storage_override(tmp_path, monkeypatch):
+    virtual = tmp_path / "virtual runtime"
+    physical = tmp_path / "physical runtime"
+    physical.mkdir()
+    (physical / "python.exe").touch()
+    monkeypatch.setenv("UWCC_CONVERTER_ENV", str(virtual))
+    original_resolve = Path.resolve
+
+    def resolve(path, *, strict=False):
+        if path == virtual.with_name(virtual.name + "-cpu"):
+            assert strict and path.is_dir()
+            return physical
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    calls = []
+
+    def check(args, **kwargs):
+        calls.append(args)
+        assert args[0] == str(physical / "python.exe")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(model_setup, "_converter_process", lambda operation, args, **kw: check(args, **kw))
+    assert model_setup.ensure_converter_python(backend="cpu") == str(physical / "python.exe")
+    assert len(calls) == 1
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows DLL search paths")
 @pytest.mark.parametrize("fails", [False, True])
 def test_frozen_converter_isolates_bundle_paths_and_restores_dll_search(tmp_path, monkeypatch, fails):
