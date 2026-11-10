@@ -7,6 +7,8 @@ Internal RGB is ACEScg (AP1, D60); model references are encoded sRGB.
 from __future__ import annotations
 
 import numpy as np
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from .errors import UWCCError
 
@@ -14,6 +16,22 @@ try:
     from . import _native
 except ImportError:
     _native = None
+
+# Shared across concurrent frames: bounded blocks avoid allocating a complete
+# set of float temporaries per worker, and avoid nested per-frame thread pools.
+_MANUAL_BLOCK_PIXELS = 65536
+_manual_pool = None
+_manual_pool_lock = threading.Lock()
+
+
+def _manual_executor():
+    global _manual_pool
+    with _manual_pool_lock:
+        if _manual_pool is None:
+            from .media import cpu_threads
+            _manual_pool = ThreadPoolExecutor(max_workers=min(4, cpu_threads()),
+                                              thread_name_prefix="uwcc-manual")
+        return _manual_pool
 
 RGB_XYZ = np.array([[.4123908, .35758434, .18048079],
                     [.21263901, .71516868, .07219232],
@@ -173,7 +191,7 @@ def box_blur(x, radius):
     return out
 
 
-def manual(ap1, p):
+def _manual_numpy(ap1, p):
     if all(p[k] == v for k, v in {
         "temperature": 0, "tint": 0, "exposure": 0, "contrast": 0,
         "shadows": 0, "highlights": 0, "black_point": 0,
@@ -208,6 +226,44 @@ def manual(ap1, p):
         base = box_blur(rgb, max(2, rgb.shape[1]//150))
         detail = rgb-base
         rgb += np.clip(detail, -.12, .12) * p["dehaze"]/100
+    return np.asarray(rgb @ TO_AP1["rec709"].T, dtype=np.float32)
+
+
+def _manual_parameters(p, fused=False):
+    """Frame-constant transforms shared by native manual/export kernels."""
+    temp, tint = p["temperature"] / 100, p["tint"] / 100
+    cone_gains = np.diag(np.exp([temp*.25-tint*.08, tint*.16, -temp*.25-tint*.08]))
+    matrix = np.linalg.inv(AP1_XYZ) @ np.linalg.inv(BRADFORD) @ cone_gains @ BRADFORD @ AP1_XYZ
+    pieces = [matrix.astype(np.float32).ravel(), FROM_AP1["rec709"].ravel(), LUMA]
+    if fused:
+        pieces.append(TO_AP1["rec709"].ravel())
+    angle = np.deg2rad(p["hue"])
+    parameters = np.array([2 ** p["exposure"], 2 ** (p["contrast"]/100),
+                           p["shadows"]/100, p["highlights"]/100,
+                           p["black_point"]/100*.04, np.cos(angle), np.sin(angle),
+                           p["saturation"]], dtype=np.float64)
+    return np.concatenate(pieces), parameters
+
+
+def manual(ap1, p):
+    """Fuse pointwise controls without approximating the transform with a LUT."""
+    neutral = all(p[k] == v for k, v in {
+        "temperature": 0, "tint": 0, "exposure": 0, "contrast": 0,
+        "shadows": 0, "highlights": 0, "black_point": 0,
+        "hue": 0, "saturation": 100, "dehaze": 0,
+    }.items())
+    # Keep spatial dehaze on its original path: float32 prefix sums can amplify
+    # tiny pointwise rounding differences at image boundaries.
+    if neutral or p["dehaze"] or p["sharpness"] or _native is None or not hasattr(_native, "manual_color"):
+        return _manual_numpy(ap1, p)
+    matrices, parameters = _manual_parameters(p)
+    ap1 = np.require(ap1, dtype=np.float32, requirements=["C", "A"])
+    if ap1.ndim < 1 or ap1.shape[-1] != 3:
+        raise ValueError("Expected an RGB frame with three channels")
+    # The reference promotes hue/saturation arithmetic to float64 through
+    # NumPy's trig scalars. Preserve that precision through spatial finishing.
+    rgb = np.empty(ap1.shape, dtype=np.float64)
+    _native.manual_color(ap1, matrices, parameters, rgb)
     return np.asarray(rgb @ TO_AP1["rec709"].T, dtype=np.float32)
 
 
@@ -311,7 +367,7 @@ def correct(encoded, grade, seconds=0, analysis=None, preview=False):
 
 def correct_rgb48(encoded, grade, seconds=0, analysis=None):
     """Export-only fused Rec.709 path, preserving the full graph as fallback."""
-    if (_native is not None and hasattr(_native, "lut_rgb48") and analysis
+    if (_native is not None and hasattr(_native, "lut_rgb48")
             and grade.input_profile == "rec709" and grade.output_profile == "rec709"):
         p = grade.at(seconds)
         neutral = all(p[k] == v for k, v in {
@@ -320,7 +376,7 @@ def correct_rgb48(encoded, grade, seconds=0, analysis=None):
             "hue": 0, "dehaze": 0, "sharpness": 0}.items())
         # Strength zero follows the original color graph, not an identity
         # shortcut; active manual controls and log/HDR also keep their semantics.
-        if p["strength"] and neutral:
+        if p["strength"] and neutral and analysis:
             from .enhance import cube_at
             cube = cube_at(analysis, seconds)
             if cube is not None:
@@ -330,6 +386,44 @@ def correct_rgb48(encoded, grade, seconds=0, analysis=None):
                 cube = np.require(cube, dtype=np.float32, requirements=["C", "A"])
                 output = np.empty(frame.shape, dtype=np.uint16)
                 _native.lut_rgb48(frame, cube, output, cube.shape[0], p["strength"]/100)
+                return output.astype("<u2", copy=False)
+        elif not neutral and not p["dehaze"] and not p["sharpness"] and hasattr(_native, "manual_rgb48"):
+            # Manual controls must follow the original float LUT/strength step;
+            # quantizing that intermediate to RGB48 would lose shadow detail.
+            from .enhance import cube_at
+            cube = cube_at(analysis, seconds) if analysis and p["strength"] else None
+            if cube is not None or not analysis or not p["strength"]:
+                frame = np.require(encoded, dtype=np.float32, requirements=["C", "A"])
+                if frame.ndim < 1 or frame.shape[-1] != 3:
+                    raise ValueError("Expected an RGB frame with three channels")
+                matrices, parameters = _manual_parameters(p, fused=True)
+                output = np.empty(frame.shape, dtype=np.uint16)
+                flat, codes = frame.reshape(-1, 3), output.reshape(-1, 3)
+                strength = np.float32(p["strength"]/100)
+                def process(start):
+                    block = flat[start:start+_MANUAL_BLOCK_PIXELS]
+                    if cube is not None:
+                        auto = apply_lut(block, cube, uniform=True)
+                        block = np.clip(block+(auto-block)*strength, 0, 1)
+                    _native.manual_rgb48(block, matrices, parameters,
+                                         codes[start:start+len(block)])
+                starts = range(0, len(flat), _MANUAL_BLOCK_PIXELS)
+                if len(flat) <= _MANUAL_BLOCK_PIXELS:
+                    process(0)
+                else:
+                    # Wait for tasks before returning, including on failure:
+                    # never leave native tasks writing into a returned buffer.
+                    executor = _manual_executor()
+                    futures = [executor.submit(process, start) for start in starts]
+                    try:
+                        for future in futures:
+                            future.result()
+                    finally:
+                        for future in futures:
+                            future.cancel()
+                        for future in futures:
+                            if not future.cancelled():
+                                future.exception()
                 return output.astype("<u2", copy=False)
     result = correct(encoded, grade, seconds, analysis)
     scaled = result*65535

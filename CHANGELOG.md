@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.2 — 2026-11-10
+
+### Fixed
+
+- Launch external Windows converter Python and its absolute path arguments with
+  Win32 extended physical paths. This prevents `WinError 206` while pip installs
+  deeply nested dependency files under MSIX AppData, without requiring the
+  administrator-only long-path policy. Existing runtime/model locations remain
+  unchanged. An isolated setuptools 78.1.0 installation reproduced the exact
+  failing file and succeeded when retried through the patched launcher.
+
+### Performance
+
+- Fuse pointwise manual color controls into native kernels instead of building
+  full-frame NumPy temporaries for each operation. SDR Rec.709 exports with
+  black point, temperature/tint, exposure, contrast, shadows/highlights,
+  saturation or hue use bounded blocks on a shared pool of at most four workers.
+  Automatic LUT blending stays in float32 before manual controls; there is no
+  intermediate RGB48 quantization or approximation of controls with a 3D LUT.
+- Preserve the existing paths for spatial dehaze/sharpening and the neutral
+  AVX2 export kernel. Builds without the updated extension retain NumPy fallback.
+  Native floating-point rounding can change a final 16-bit sample slightly;
+  numerical parity and spatial fallback tests cover the new dispatch.
+- A matched 12-frame 4K C0022 export with stabilization and black point 36
+  improved from 31.87 to 9.02 seconds. Real-frame color comparisons differed by
+  at most one 16-bit code. See [measurements](docs/benchmarks/C0022-manual-color.md).
+  Windows `.venv` full suite with rebuilt native kernels: 367 passed, 16 skipped.
+
 ## 0.5.1 — 2026-11-09
 
 ### Fixed

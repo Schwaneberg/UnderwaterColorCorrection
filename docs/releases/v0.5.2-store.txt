@@ -1,0 +1,3 @@
+What's new in v0.5.2:
+- Faster exports when adjusting black point and other manual color settings.
+- Fixed AI model setup failures caused by long Windows paths, including AMD/DirectML setup.

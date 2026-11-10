@@ -8,6 +8,48 @@ import pytest
 from uwcc import model_setup
 
 
+@pytest.mark.parametrize("path,expected", [
+    ("C:\\Users\\A Name\\runtime\\python.exe", "\\\\?\\C:\\Users\\A Name\\runtime\\python.exe"),
+    ("\\\\server\\share\\runtime\\python.exe", "\\\\?\\UNC\\server\\share\\runtime\\python.exe"),
+    ("\\\\?\\C:\\runtime\\python.exe", "\\\\?\\C:\\runtime\\python.exe"),
+    ("\\\\?\\UNC\\server\\share\\python.exe", "\\\\?\\UNC\\server\\share\\python.exe"),
+])
+def test_windows_extended_path_syntax(path, expected):
+    assert model_setup._windows_extended_path(path) == expected
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows converter paths")
+def test_frozen_converter_extends_physical_paths_and_keeps_options(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "bundle" / "uwcc.exe"))
+    logical = tmp_path / "logical"
+    physical = tmp_path / "Packages" / "app" / "LocalCache"
+    original_resolve = Path.resolve
+
+    def resolve(path, **kwargs):
+        if path.is_relative_to(logical):
+            return physical / path.relative_to(logical)
+        return original_resolve(path, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    @contextmanager
+    def dll_search():
+        yield
+    monkeypatch.setattr(model_setup, "_system_dll_search", dll_search)
+    command = [str(logical / "python.exe"), "-I", str(logical / "get-pip.py"),
+               "--index-url", "https://pypi.org/simple", "--upgrade", "torch"]
+    original = command.copy()
+
+    def launch(args, **kwargs):
+        assert args[:3] == [model_setup._windows_extended_path(physical / "python.exe"), "-I",
+                            model_setup._windows_extended_path(physical / "get-pip.py")]
+        assert args[3:] == original[3:]
+        assert kwargs["cwd"] == model_setup._windows_extended_path(physical)
+        return "launched"
+    assert model_setup._converter_process(launch, command) == "launched"
+    assert command == original
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows MSIX AppData paths")
 def test_converter_and_models_use_physical_appdata_path(tmp_path, monkeypatch):
     from uwcc import project
@@ -94,7 +136,8 @@ def test_frozen_converter_isolates_bundle_paths_and_restores_dll_search(tmp_path
     def launch(args, **kwargs):
         assert events == ["clear"]
         assert kwargs["env"] == {"PATH": str(system), "UWCC_INFERENCE_DEVICE": "directml"}
-        assert kwargs["cwd"] == str(converter.parent)
+        assert kwargs["cwd"] == model_setup._windows_extended_path(converter.parent)
+        assert args == [model_setup._windows_extended_path(converter)]
         if fails:
             raise OSError("launch failed")
         return "child"

@@ -138,11 +138,19 @@ unnecessary calculations; automatic gains stay in float32. H.264/HEVC use the
 `fast` encoding preset at the previous CRF settings (17/18), with at most eight
 encoder threads. Files may be larger than with the previous `medium` preset.
 
-The unreleased Rec.709 export optimization combines color LUT application and
+The Rec.709 export optimization combines color LUT application and
 16-bit output conversion. It automatically prefers AVX2 on compatible CPUs and
 uses a scalar native fallback elsewhere. This fast path applies when manual
-finishing controls are neutral; other grades keep the existing processing path.
+finishing controls are neutral. Version 0.5.2 also accelerates pointwise manual
+adjustments such as black point, temperature/tint, exposure, contrast,
+shadows/highlights, saturation and hue. Dehaze and sharpening keep their spatial
+processing path and can still make export slower. Native rounding may change
+a final 16-bit sample slightly; this does not guarantee identical encoded files.
 Preview quality and encoder settings are unchanged.
+
+In a matched 12-frame 4K test with stabilization and black point 36, export time
+fell from 31.87 to 9.02 seconds. This is a short-sample measurement, not a speed
+guarantee for every clip. See [the manual-color benchmark](benchmarks/C0022-manual-color.md).
 
 Package installation builds the extension when a compiler and Python development
 headers are available. For the distribution-package/source checkout workflow:

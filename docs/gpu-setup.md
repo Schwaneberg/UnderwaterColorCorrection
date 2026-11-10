@@ -28,6 +28,18 @@ The equivalent runtime-only command is:
 Use `--backend cpu` or `--backend directml` for the other choices. The manual
 environment installation instructions below are an alternative to the dialog.
 
+For Store installations, version 0.5.2 fixes `WinError 206` ("filename or
+extension is too long") during dependency installation, including the AMD /
+DirectML setup. Update UWCC and retry **Prepare models** with automatic runtime
+installation enabled; no machine-wide long-path policy change is needed.
+CPU PyTorch downloads during DirectML setup are expected: model conversion uses
+CPU PyTorch, while inference uses DirectML. The separate runtime remains in
+the app's package-local storage. See [Windows setup troubleshooting](windows-packaging.md#long-dependency-paths-during-setup).
+
+Installing a CUDA runtime accelerates supported neural inference. Manual color
+processing is CPU work; the native extension in 0.5.2 accelerates pointwise
+manual controls independently of the selected AI runtime.
+
 UWCC runs classical correction without an AI runtime. Local neural enhancement
 and FastDVDnet denoise need model files and an inference runtime. Install from
 the repository root with Python 3.12+; FFmpeg/ffprobe must also be on PATH.

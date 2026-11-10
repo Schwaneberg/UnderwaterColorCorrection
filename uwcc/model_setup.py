@@ -2,6 +2,7 @@
 import argparse
 from contextlib import contextmanager
 import importlib.util
+import ntpath
 import os
 from pathlib import Path
 import runpy
@@ -97,6 +98,16 @@ def _system_dll_search():
                 raise ctypes.WinError(ctypes.get_last_error())
 
 
+def _windows_extended_path(path):
+    """Absolute Win32 extended path, without requiring machine-wide policy."""
+    value = ntpath.abspath(os.fspath(path))
+    if value.startswith("\\\\?\\"):
+        return value
+    if value.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + value[2:]
+    return "\\\\?\\" + value
+
+
 def _converter_process(operation, args, **kwargs):
     if not (os.name == "nt" and getattr(sys, "frozen", False)) or Path(args[0]) == Path(sys.executable):
         return operation(args, **kwargs)
@@ -112,6 +123,14 @@ def _converter_process(operation, args, **kwargs):
     )
     kwargs["env"] = env
     kwargs.setdefault("cwd", str(Path(args[0]).resolve().parent))
+    # Physical MSIX AppData paths can exceed MAX_PATH inside dependency wheels.
+    # Starting Python with an extended executable path also preserves that
+    # prefix in sys.prefix/sysconfig, so pip installs deeply nested files using
+    # extended paths. This does not rely on LongPathsEnabled/admin privileges.
+    # Resolve first: a prefix alone must never bypass MSIX AppData redirection.
+    args = [_windows_extended_path(Path(arg).resolve()) if Path(arg).is_absolute() else arg
+            for arg in args]
+    kwargs["cwd"] = _windows_extended_path(Path(kwargs["cwd"]).resolve())
     with _system_dll_search():
         return operation(args, **kwargs)
 

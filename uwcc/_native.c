@@ -153,6 +153,106 @@ static int overlap(const Py_buffer *a, const Py_buffer *b) {
     return x <= y ? y-x < (uintptr_t)a->len : x-y < (uintptr_t)b->len;
 }
 
+/* Match NumPy maximum/clip's propagation of NaN rather than fmax's masking. */
+static float positive(float value) { return value < 0 ? 0 : value; }
+static float clip01(float value) { return value < 0 ? 0 : value > 1 ? 1 : value; }
+
+static float dot3(const float *v, const float *m) {
+    return (v[0]*m[0]+v[1]*m[1])+v[2]*m[2];
+}
+
+static PyObject *manual_kernel(PyObject *args, int fused) {
+    PyObject *a, *m, *p, *o;
+    Py_buffer src={0}, matrix={0}, parameters={0}, dst={0};
+    if (!PyArg_ParseTuple(args, "OOOO", &a, &m, &p, &o)) return NULL;
+    if (!floats(a, &src, 0)) return NULL;
+    if (!floats(m, &matrix, 0)) goto fail_manual;
+    if (PyObject_GetBuffer(p, &parameters, PyBUF_FORMAT | PyBUF_C_CONTIGUOUS) < 0) goto fail_manual;
+    if (PyObject_GetBuffer(o, &dst, PyBUF_FORMAT | PyBUF_C_CONTIGUOUS | PyBUF_WRITABLE) < 0) goto fail_manual;
+    if (src.len%12 || matrix.len != (fused ? 30 : 21)*4 || parameters.len != 8*8 ||
+        parameters.itemsize != 8 || !parameters.format || strcmp(parameters.format,"d") ||
+        dst.len != src.len/4*(fused ? 2 : 8) || dst.itemsize != (fused ? 2 : 8) || !dst.format || strcmp(dst.format,fused ? "H" : "d") ||
+        (uintptr_t)src.buf%4 || (uintptr_t)matrix.buf%4 || (uintptr_t)parameters.buf%8 || (uintptr_t)dst.buf%(fused ? 2 : 8) ||
+        overlap(&src,&dst) || overlap(&matrix,&dst) || overlap(&parameters,&dst)) {
+        PyErr_SetString(PyExc_ValueError,"Invalid manual color buffers, dimensions, alignment or overlap");
+        goto fail_manual;
+    }
+    float transforms[30]; double controls[8];
+    memcpy(transforms,matrix.buf,(size_t)matrix.len); memcpy(controls,parameters.buf,sizeof(controls));
+    for (int i=0;i<(fused ? 30 : 21);i++) if (!isfinite(transforms[i])) {
+        PyErr_SetString(PyExc_ValueError,"Manual color matrices must be finite"); goto fail_manual;
+    }
+    for (int i=0;i<8;i++) if (!isfinite(controls[i])) {
+        PyErr_SetString(PyExc_ValueError,"Manual color parameters must be finite"); goto fail_manual;
+    }
+    const float *in=src.buf; double *out=dst.buf; uint16_t *codes=dst.buf;
+    float exposure=(float)controls[0], contrast=(float)controls[1];
+    float shadows=(float)controls[2], highlights=(float)controls[3], black=(float)controls[4];
+    Py_BEGIN_ALLOW_THREADS
+    for (Py_ssize_t at=0;at<src.len/4;at+=3) {
+        float adapted[3], rgb[3], ap1[3], linear[3];
+        const float *input=in+at;
+        if (fused) {
+            for (int c=0;c<3;c++) {
+                float x=positive(input[c]);
+                linear[c]=x<.081f ? x/4.5f : powf((x+.099f)/1.099f,1/.45f);
+            }
+            for (int c=0;c<3;c++) ap1[c]=dot3(linear,transforms+21+3*c);
+            input=ap1;
+        }
+        for (int c=0;c<3;c++) adapted[c]=positive(dot3(input,transforms+3*c))*exposure;
+        for (int c=0;c<3;c++) rgb[c]=dot3(adapted,transforms+9+3*c);
+        float y=dot3(rgb,transforms+18); if (y<1e-7f) y=1e-7f;
+        float base=y/.18f; if (base<1e-7f) base=1e-7f;
+        float target=.18f*(contrast==1 ? base : powf(base,contrast));
+        float shadow=clip01(1-y/.5f), high=clip01(y/.8f);
+        float exponent=shadows*(shadow*shadow)+highlights*(high*high);
+        target*=exponent==0 ? 1 : powf(2,exponent);
+        target=positive(target-black);
+        float factor=target/y;
+        for (int c=0;c<3;c++) rgb[c]*=factor;
+        y=dot3(rgb,transforms+18);
+        float u=rgb[0]-rgb[1], v=rgb[2]-rgb[1];
+        double u1=((double)u*controls[5]-(double)v*controls[6])*controls[7]/100;
+        double v1=((double)u*controls[6]+(double)v*controls[5])*controls[7]/100;
+        double green=(double)y-(double)transforms[18]*u1-(double)transforms[20]*v1;
+        double finished[3]={green+u1,green,green+v1};
+        if (!fused) {
+            for (int c=0;c<3;c++) out[at+c]=finished[c];
+        } else {
+            /* Preserve both reference matrix round trips and float32 cast. */
+            for (int c=0;c<3;c++) {
+                const float *m=transforms+21+3*c;
+                ap1[c]=(float)((finished[0]*m[0]+finished[1]*m[1])+finished[2]*m[2]);
+            }
+            for (int c=0;c<3;c++) rgb[c]=dot3(ap1,transforms+9+3*c);
+            float luminance=bound(dot3(rgb,transforms+18),0,1), scale=1;
+            for (int c=0;c<3;c++) {
+                float d=rgb[c]-luminance;
+                float room=d>0 ? (1-luminance)/fmaxf(d,1e-8f) : -luminance/fminf(d,-1e-8f);
+                scale=fminf(scale,room);
+            }
+            for (int c=0;c<3;c++) {
+                float v=bound(luminance+(rgb[c]-luminance)*scale,0,1);
+                float encoded=bound(v<.018f ? v*4.5f : 1.099f*powf(v,.45f)-.099f,0,1);
+                codes[at+c]=(uint16_t)nearbyintf(encoded*65535.f);
+            }
+        }
+    }
+    Py_END_ALLOW_THREADS
+    PyBuffer_Release(&src); PyBuffer_Release(&matrix); PyBuffer_Release(&parameters); PyBuffer_Release(&dst);
+    Py_RETURN_NONE;
+fail_manual:
+    if (src.obj) PyBuffer_Release(&src);
+    if (matrix.obj) PyBuffer_Release(&matrix);
+    if (parameters.obj) PyBuffer_Release(&parameters);
+    if (dst.obj) PyBuffer_Release(&dst);
+    return NULL;
+}
+
+static PyObject *manual_color(PyObject *self, PyObject *args) { return manual_kernel(args,0); }
+static PyObject *manual_rgb48(PyObject *self, PyObject *args) { return manual_kernel(args,1); }
+
 static PyObject *lut_rgb48(PyObject *self, PyObject *args) {
     PyObject *a, *l, *o;
     Py_buffer src = {0}, lut = {0}, dst = {0};
@@ -223,6 +323,8 @@ static PyObject *rgb48_backend(PyObject *self, PyObject *unused) {
 static PyMethodDef methods[]={
     {"apply_lut",lut_apply,METH_VARARGS,"Tetrahedral scene-linear LUT interpolation."},
     {"encode709",encode709,METH_VARARGS,"Fused SDR tone mapping, gamut compression and transfer."},
+    {"manual_color",manual_color,METH_VARARGS,"Fused manual pointwise color controls; float64 linear RGB output."},
+    {"manual_rgb48",manual_rgb48,METH_VARARGS,"Fused Rec.709 decode, manual controls, encode and RGB48 quantization."},
     {"lut_rgb48",lut_rgb48,METH_VARARGS,"Fused uniform LUT, strength, and uint16 output (AVX2 by default when available)."},
     {"rgb48_backend",rgb48_backend,METH_NOARGS,"Return the CPU/OS-selected RGB48 kernel."},
     {NULL,NULL,0,NULL}

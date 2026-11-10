@@ -257,14 +257,31 @@ process RSS limit and excludes additional neural-window/network allocations.
 Codec pools normally use up to eight threads and filters up to four.
 Temporal processing precedes the ordered color-worker pool. The optional C
 extension accelerates tetrahedral LUT evaluation and fused SDR conversion;
-the unreleased export path also fuses encoded Rec.709 LUT interpolation,
+the neutral export path also fuses encoded Rec.709 LUT interpolation,
 strength blending, clamping, and uint16 quantization when manual controls are
 neutral. It selects AVX2 by default only after CPU AVX2/XSAVE and OS XMM/YMM
 state checks. A separately compiled AVX2 object is excluded from cross-object
 optimization; baseline native code stays compatible with non-AVX2 CPUs. The
 portable fused scalar path handles unsupported CPUs and vector tails. Non-x86
-targets build the scalar implementation. Manual finishing, log/HDR, zero
-strength, and missing/non-LUT analysis retain the original float graph.
+targets build the scalar implementation.
+
+Pointwise manual controls have a separate portable native kernel. Rec.709
+exports with black point, temperature/tint, exposure, contrast, shadows,
+highlights, saturation or hue fuse decoding, manual math, gamut compression,
+encoding and RGB48 quantization. The transform retains the reference's matrix
+round trips, float32 stages and float64 chroma arithmetic; it does not bake
+manual controls into an approximate LUT. Automatic LUT strength is applied in
+float32 before the kernel. Blocks of at most 65,536 pixels run on one shared
+pool of up to four workers, honoring `UWCC_THREADS`/affinity without a new pool
+for each frame. The outer frame budget is unchanged. Buffers are validated and
+pinned, inputs remain read-only, and the native loop releases the GIL.
+
+Dehaze and sharpening keep their original spatial graph, where prefix sums or
+detail thresholds could amplify pointwise rounding differences. Log/HDR and
+legacy analysis keep the original graph, with native pointwise manual math
+where applicable. NumPy remains the fallback for absent/older native modules.
+Final samples need not be bit-identical: the real 4K comparisons differed by
+at most one 16-bit code value. See [manual-control measurements](benchmarks/C0022-manual-color.md).
 NumPy is the fallback. Its LUT interpolation uses blocks of at most 65,536
 pixels, float32 fractions/results, and direct tetrahedron-corner selection
 instead of full-frame sorting and float64 intermediates. Decoder normalization

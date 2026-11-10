@@ -134,8 +134,32 @@ and resolves its physical Windows path before selecting runtime and model
 directories. Runtime overrides are resolved before interpreter launch too.
 The installed diagnostic MSIX reproduced the missing-file failure with logical
 paths and successfully installed pip with physical paths in a fresh runtime.
-See [the diagnostic report](store-path-probe.md). Full model setup still needs
-testing in a rebuilt UWCC package; the diagnostic did not install ML packages.
+See [the diagnostic report](store-path-probe.md). A separately signed lean UWCC
+0.5.1 setup-test MSIX subsequently completed setup locally, as confirmed by the
+tester. The affected AMD PC then encountered the distinct path-length failure
+below; it still needs the 0.5.2 retry.
+
+### Long dependency paths during setup
+
+Version 0.5.2 addresses `WinError 206` ("Der Dateiname oder die Erweiterung ist zu lang") during pip
+installation can occur after physical MSIX path resolution, because
+`AppData\Local\Packages\...\LocalCache` adds substantial path depth. The launcher
+now resolves paths first and then uses the Win32 extended path form (`\\?\C:\...`,
+or `\\?\UNC\server\share\...`) for external Python, absolute path arguments and
+its working directory. Embedded Python retains that prefix in `sys.prefix` and
+`sysconfig` installation paths, allowing pip to create long dependency paths.
+No global long-path policy or administrator permissions are required for this
+change, and existing converter environments can be retried in place.
+
+An isolated runtime with long-path opt-in disabled reproduced `WinError 206`
+on setuptools 78.1.0's
+`pkg_resources/tests/data/my-test-package_unpacked-egg/my_test_package-1.0-py3.7.egg`.
+Retrying the incomplete installation through the patched UWCC launcher
+succeeded. The experiment only modified a disposable copied Python executable;
+Windows policy and production runtimes were unchanged. Installed MSIX testing
+on the affected AMD PC remains required.
+
+See [Microsoft's path-length documentation](https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation).
 
 ## Store submission
 
