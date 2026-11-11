@@ -9,6 +9,51 @@ from uwcc.project import Grade, Project
 from uwcc.render import color_workers, corrected_frames
 
 
+def test_cancel_waits_for_watcher_before_encoder_cleanup(clip, tmp_path, monkeypatch):
+    import uwcc.render as module
+    original = module.frame_process
+    killing = threading.Event()
+    release = threading.Event()
+
+    class Encoder:
+        def __init__(self, *args, **kwargs):
+            self.process = original(*args, **kwargs)
+            self.stdin = self.process.stdin
+
+        def poll(self):
+            assert not killing.is_set(), "Cleanup raced the cancellation watcher"
+            return self.process.poll()
+
+        def kill(self):
+            killing.set()
+            self.process.kill()
+            assert release.wait(3)
+
+        def wait(self):
+            code = self.process.wait()
+            killing.clear()
+            return code
+
+    monkeypatch.setattr(module, "frame_process", Encoder)
+    cancel = threading.Event()
+
+    def progress(fraction, message):
+        if message.startswith("Rendering frame"):
+            cancel.set()
+            assert killing.wait(3)
+            # Keep the watcher inside kill while the render loop unwinds.
+            timer = threading.Timer(.2, release.set)
+            timer.start()
+
+    target = tmp_path / "existing.mp4"
+    target.write_bytes(b"existing output")
+    project = Project(str(clip), Grade(input_profile="rec709"))
+    with pytest.raises(Cancelled):
+        module.render(project, target, cancel=cancel, progress=progress, overwrite=True)
+    assert target.read_bytes() == b"existing output"
+    assert not list(tmp_path.glob(".uwcc-render-*"))
+
+
 def test_parallel_color_is_bounded_ordered_and_concurrent(monkeypatch):
     import uwcc.render as module
     barrier = threading.Barrier(2)

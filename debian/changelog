@@ -1,3 +1,11 @@
+uwcc (0.5.3-1~ppa1) resolute; urgency=medium
+
+  * Include setup.py in staged native build tests.
+  * Serialize export cancellation and encoder cleanup on Windows.
+  * Package the 0.5.x export performance and model setup fixes.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Wed, 11 Nov 2026 08:00:00 +0100
+
 uwcc (0.4.3-1~ppa1) resolute; urgency=medium
 
   * Repair embedded converter pip with get-pip.py rather than missing ensurepip.

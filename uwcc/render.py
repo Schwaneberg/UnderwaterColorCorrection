@@ -172,6 +172,7 @@ def render(project, destination, profile="h264", cancel=None, progress=lambda *_
                 while not stop_watch.wait(.1):
                     if cancel.is_set() and process.poll() is None:
                         process.kill()
+                        process.wait()
                         return
 
             watcher = threading.Thread(target=watch, daemon=True)
@@ -205,12 +206,15 @@ def render(project, destination, profile="h264", cancel=None, progress=lambda *_
                 raise UWCCError(errors.read()[-6000:].decode("utf-8", "replace")) from exc
             finally:
                 stop_watch.set()
+                # Finish any cancellation kill before touching the process here.
+                # Concurrent TerminateProcess calls on Windows can cache an exit
+                # code before termination releases the encoder's output file.
+                watcher.join()
                 if process.poll() is None:
                     process.kill()
                 process.wait()
                 if not process.stdin.closed:
                     process.stdin.close()
-                watcher.join(timeout=1)
         if frames != expected:
             raise UWCCError(f"Frame count changed during decode: expected {expected}, got {frames}.")
         progress(.94, "Preserving audio and metadata…")

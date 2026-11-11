@@ -1,3 +1,3 @@
 """Underwater Color Correction. SPDX-License-Identifier: GPL-3.0-or-later."""
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"

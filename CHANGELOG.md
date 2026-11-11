@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.3 — 2026-11-11
+
+### Fixed
+
+- Serialize Windows export cancellation and encoder cleanup so FFmpeg releases
+  its output before temporary files are removed.
+- Include `setup.py` in Debian's staged native build tests and update the Debian
+  package version to match the application release.
+
+### Validation
+
+- Ubuntu 26.04 binary packages built successfully with the CI dependencies:
+  360 tests passed, 24 skipped.
+- The cancellation regression test fails with the previous cleanup code and
+  passes with the fix. Native kernels rebuilt locally; 131 focused tests passed.
+- Verification on the Windows CI runner remains pending.
+
 ## 0.5.2 — 2026-11-10
 
 ### Fixed
