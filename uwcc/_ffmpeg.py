@@ -13,9 +13,9 @@ def resolve_shim(path: Path) -> Path:
     name = path.name
     candidates = []
     if "chocolatey" in parts and path.parent.name.lower() == "bin":
-        candidates.extend(sorted((path.parent.parent / "lib").glob(f"*/tools/**/{name}")))
+        candidates.extend(sorted((path.parent.parent / "lib").glob(f"ffmpeg*/tools/**/{name}")))
     if path.parent.name.lower() == "shims" and "scoop" in parts:
-        candidates.extend(sorted((path.parent.parent / "apps").glob(f"*/current/**/{name}")))
+        candidates.extend(sorted((path.parent.parent / "apps").glob(f"ffmpeg*/current/**/{name}")))
     for candidate in candidates:
         if candidate.is_file() and candidate.stat().st_size > path.stat().st_size:
             return candidate.resolve()

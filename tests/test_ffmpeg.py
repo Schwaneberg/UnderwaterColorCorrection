@@ -22,6 +22,10 @@ def test_runtime_resolves_package_manager_launchers(tmp_path, monkeypatch, manag
     for path, data in ((shim, b"launcher"), (real, b"real executable" * 10)):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
+    unrelated = root / ("lib/another-package/tools" if manager == "chocolatey"
+                        else "apps/another-package/current") / shim.name
+    unrelated.parent.mkdir(parents=True)
+    unrelated.write_bytes(b"unrelated executable" * 10)
     monkeypatch.setattr(media, "bundled_ffmpeg_dirs", lambda: [shim.parent] if explicit else [])
     monkeypatch.setattr(media.shutil, "which", lambda *a, **k: str(shim))
     assert Path(media.executable(name)) == real.resolve()
