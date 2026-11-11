@@ -1,0 +1,4 @@
+What's new in v0.5.4:
+- Fixed Windows export cancellation with Chocolatey and Scoop FFmpeg installations.
+- Improved FFmpeg discovery so the encoder stops before temporary files are cleaned up.
+- Verified Windows executable and MSIX builds, bundled rendering, and Ubuntu packages in CI.

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.4 — 2026-11-11
 
 ### Fixed
 
@@ -9,6 +9,14 @@
   its child holding temporary output files open (`WinError 32`). The 0.5.3
   cleanup synchronization alone did not address these launchers.
 - Add runtime launcher-discovery and cancellation regressions to Windows CI.
+
+### Validation
+
+- Windows CI on the fix: 216 tests passed; standalone executable and MSIX
+  built; bundled FFmpeg, native kernels, ONNX Runtime, OpenCV, analysis, and
+  rendering smoke tests passed.
+- Ubuntu and Debian package suites: 369 passed, 24 skipped each. Binary and
+  source packages, lintian, and installed-package smoke tests passed.
 
 ## 0.5.3 — 2026-11-11
 

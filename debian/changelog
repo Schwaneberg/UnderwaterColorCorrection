@@ -1,3 +1,12 @@
+uwcc (0.5.4-1~ppa1) resolute; urgency=medium
+
+  * Resolve Chocolatey and Scoop FFmpeg launchers during runtime discovery.
+  * Stop the actual encoder on cancellation before removing temporary output.
+  * Share the resolver with packaging and limit searches to FFmpeg packages.
+  * Verify Windows packaging and smoke tests plus Ubuntu package builds in CI.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Wed, 11 Nov 2026 09:45:00 +0100
+
 uwcc (0.5.3-1~ppa1) resolute; urgency=medium
 
   * Include setup.py in staged native build tests.
