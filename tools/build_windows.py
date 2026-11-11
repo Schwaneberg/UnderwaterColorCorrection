@@ -18,6 +18,11 @@ import sys
 import tempfile
 from xml.sax.saxutils import escape
 
+# Allow the standalone build script to share runtime executable discovery.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from uwcc._ffmpeg import resolve_shim
+
 
 EXCLUDED_SUFFIXES = {".onnx", ".pth", ".pt", ".safetensors", ".so", ".pyd", ".dll", ".exe", ".msix", ".ico"}
 EXCLUDED_DIRS = {".sources", ".aws", ".codex", ".agents", "__pycache__", "dist", "build"}
@@ -56,25 +61,6 @@ def msix_version(version: str) -> str:
     while len(numbers) < 4:
         numbers.append(0)
     return ".".join(str(n) for n in numbers[:4])
-
-
-def resolve_shim(path: Path) -> Path:
-    """Follow Chocolatey/Scoop launcher shims to the real executable.
-
-    Shims are tiny redirectors using relative paths, so copying them into a
-    bundle produces a broken binary.
-    """
-    parts = [part.lower() for part in path.parts]
-    name = path.name
-    candidates = []
-    if "chocolatey" in parts and path.parent.name.lower() == "bin":
-        candidates.extend(sorted((path.parent.parent / "lib").glob(f"*/tools/**/{name}")))
-    if path.parent.name.lower() == "shims" and "scoop" in parts:
-        candidates.extend(sorted((path.parent.parent / "apps").glob(f"*/current/**/{name}")))
-    for candidate in candidates:
-        if candidate.is_file() and candidate.stat().st_size > path.stat().st_size:
-            return candidate.resolve()
-    return path
 
 
 def resolve_ffmpeg(ffmpeg_dir: Path | None = None) -> tuple[Path, Path]:
