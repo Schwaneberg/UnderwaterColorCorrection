@@ -83,6 +83,12 @@ AVX2-specific compiler failure if that object cannot be produced.
 
 ## Continuous integration
 
+Runtime FFmpeg discovery and packaging share the Chocolatey/Scoop shim resolver.
+UWCC launches the real FFmpeg executable so canceling a render stops the encoder
+itself. Killing a launcher alone can leave its child holding the temporary output
+open and cause `WinError 32` during cleanup. CI tests keep the package-manager
+launchers on PATH to exercise this resolution.
+
 The `windows-package` job in `.github/workflows/tests.yml` runs on every push
 and pull request on `windows-latest`. It builds the bundle and `.msix` with
 `--require-native`, smoke-tests the frozen `uwcc.exe` (bundled FFmpeg, ONNX

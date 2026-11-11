@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from .errors import Cancelled, UWCCError
+from ._ffmpeg import resolve_shim
 from ._frame_pipe import frame_process
 
 NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
@@ -55,11 +56,11 @@ def executable(name):
         if directory.is_dir():
             found = shutil.which(name, path=str(directory))
             if found:
-                return found
+                return str(resolve_shim(Path(found).resolve()))
     found = shutil.which(name)
     if not found:
         raise UWCCError(f"{name} is missing. Install FFmpeg and make it available on PATH.")
-    return found
+    return str(resolve_shim(Path(found).resolve()))
 
 
 def run(args, cancel=None):

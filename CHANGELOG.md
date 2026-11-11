@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Resolve Chocolatey/Scoop FFmpeg launchers at runtime as well as during
+  packaging. Canceling a render now stops the real encoder instead of leaving
+  its child holding temporary output files open (`WinError 32`). The 0.5.3
+  cleanup synchronization alone did not address these launchers.
+- Add runtime launcher-discovery and cancellation regressions to Windows CI.
+
 ## 0.5.3 — 2026-11-11
 
 ### Fixed
