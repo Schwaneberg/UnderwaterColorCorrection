@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 from .errors import Cancelled, UWCCError
-from .project import CONTROLS, clone, defaults, valid_value
+from .project import CONTROLS, atomic_json, clone, defaults, user_directory, valid_value
 
 PROVIDERS = {"openai": ("https://api.openai.com/v1/responses", "OPENAI_API_KEY"),
              "anthropic": ("https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY")}
@@ -21,6 +21,33 @@ SCHEMA = {"type": "object", "additionalProperties": False, "properties": {
     "denoise": {"type": "number", "minimum": 0, "maximum": 10},
     "stabilize": {"type": "boolean"}, "summary": {"type": "string"}},
     "required": ["values", "denoise", "stabilize", "summary"]}
+
+
+def settings_path():
+    return user_directory(create=False) / "cloud.json"
+
+
+def saved_api_keys():
+    try:
+        data = json.loads(settings_path().read_text(encoding="utf-8"))
+        keys = data["api_keys"]
+        if isinstance(keys, dict):
+            return {p: k for p, k in keys.items()
+                    if p in PROVIDERS and isinstance(k, str) and k.strip()}
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return {}
+
+
+def save_api_key(provider, key):
+    if provider not in PROVIDERS:
+        raise UWCCError("Choose a supported cloud provider.")
+    keys = saved_api_keys()
+    if key.strip():
+        keys[provider] = key.strip()
+    else:
+        keys.pop(provider, None)
+    atomic_json(settings_path(), {"api_keys": keys})
 
 
 def validate_advice(data):
@@ -41,9 +68,9 @@ def request_advice(provider, model, images, preference="Natural, balanced, vivid
     if provider not in PROVIDERS or not isinstance(model, str) or not model.strip():
         raise UWCCError("Choose a provider and enter a vision-capable API model ID.")
     endpoint, variable = PROVIDERS[provider]
-    key = os.environ.get(variable)
+    key = saved_api_keys().get(provider) or os.environ.get(variable)
     if not key:
-        raise UWCCError(f"Set {variable} in the environment to use this provider.")
+        raise UWCCError(f"Save an API key in Cloud grading advice or set {variable} in the environment.")
     if cancel and cancel.is_set():
         raise Cancelled("Cloud advice canceled.")
     encoded = []

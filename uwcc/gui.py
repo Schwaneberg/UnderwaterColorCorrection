@@ -1312,16 +1312,48 @@ class MainWindow(W.QMainWindow):
     def cloud_advice(self):
         if not self.project:
             return
-        from .cloud import advise_project, apply_advice
+        from .cloud import advise_project, apply_advice, save_api_key, saved_api_keys
         dialog = W.QDialog(self)
         dialog.setWindowTitle("Cloud grading advice")
         layout = W.QVBoxLayout(dialog)
         label = W.QLabel("Send three JPEG proxy frames (up to 640 px) to the selected API.\n"
-                        "Uses OPENAI_API_KEY or ANTHROPIC_API_KEY from your environment.\n"
+                        "Uses a saved API key or OPENAI_API_KEY / ANTHROPIC_API_KEY from your environment.\n"
                         "The full video and audio remain local.")
         label.setWordWrap(True)
         layout.addWidget(label)
         provider = self.combo(layout, "Provider", {"openai": "OpenAI", "anthropic": "Claude / Anthropic"})
+        layout.addWidget(W.QLabel("API key"))
+        api_key = W.QLineEdit()
+        api_key.setObjectName("cloud_api_key")
+        api_key.setEchoMode(W.QLineEdit.EchoMode.Password)
+        layout.addWidget(api_key)
+        show_key = W.QCheckBox("Show API key")
+        show_key.toggled.connect(lambda visible: api_key.setEchoMode(
+            W.QLineEdit.EchoMode.Normal if visible else W.QLineEdit.EchoMode.Password))
+        layout.addWidget(show_key)
+        save_key = W.QPushButton("Save API key")
+        save_key.setAutoDefault(False)
+        layout.addWidget(save_key)
+        key_status = W.QLabel("Saved keys are stored locally in plaintext. Clear and save to remove a key.")
+        key_status.setWordWrap(True)
+        layout.addWidget(key_status)
+
+        def load_key():
+            show_key.setChecked(False)
+            api_key.setText(saved_api_keys().get(provider.currentData(), ""))
+            key_status.setText("Saved keys are stored locally in plaintext. Clear and save to remove a key.")
+
+        def persist_key():
+            try:
+                save_api_key(provider.currentData(), api_key.text())
+            except OSError:
+                key_status.setText("Could not save the API key. Check access to the application data directory.")
+                return
+            key_status.setText("API key saved." if api_key.text().strip() else "Saved API key removed.")
+
+        provider.currentIndexChanged.connect(load_key)
+        save_key.clicked.connect(persist_key)
+        load_key()
         layout.addWidget(W.QLabel("Vision-capable API model ID"))
         model = W.QLineEdit()
         model.setPlaceholderText("Enter a model available to your API account")
@@ -1338,6 +1370,11 @@ class MainWindow(W.QMainWindow):
         layout.addWidget(buttons)
         if dialog.exec() != W.QDialog.DialogCode.Accepted:
             return
+        # Read widgets on the GUI thread while the dialog still owns them.
+        # The background task can outlive the dialog and must use plain values.
+        provider_id = provider.currentData()
+        model_id = model.text().strip()
+        desired_look = preference.text()
         self.stop_playback()
         snapshot, generation = clone(self.project), self.generation
         def complete(proposal):
@@ -1353,8 +1390,8 @@ class MainWindow(W.QMainWindow):
                 self.project.grade = apply_advice(snapshot, proposal).grade
                 self.sync_controls()
                 self.changed()
-        self.task(lambda cancel, progress: advise_project(snapshot, provider.currentData(), model.text().strip(),
-                                                         preference.text(), cancel, progress), complete)
+        self.task(lambda cancel, progress: advise_project(snapshot, provider_id, model_id,
+                                                         desired_look, cancel, progress), complete)
 
     def export_video(self):
         if not self.project:

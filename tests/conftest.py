@@ -7,6 +7,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 @pytest.fixture(autouse=True)
+def isolate_cloud_settings(tmp_path, monkeypatch):
+    from uwcc import cloud
+    monkeypatch.setattr(cloud, "settings_path", lambda: tmp_path / "cloud.json")
+
+
+@pytest.fixture(autouse=True)
 def isolate_ai_execution_settings(tmp_path, monkeypatch):
     from uwcc import execution
     monkeypatch.setattr(execution, "settings_path", lambda: tmp_path / "ai-execution.json")

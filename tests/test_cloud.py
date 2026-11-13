@@ -15,6 +15,27 @@ def proposal():
             "denoise": 3., "stabilize": False, "summary": "Increase contrast and color slightly."}
 
 
+def test_saved_keys_roundtrip_and_remove_per_provider():
+    cloud.save_api_key("openai", "  saved-openai  ")
+    cloud.save_api_key("anthropic", "saved-anthropic")
+    assert cloud.saved_api_keys() == {"openai": "saved-openai", "anthropic": "saved-anthropic"}
+    cloud.save_api_key("openai", " ")
+    assert cloud.saved_api_keys() == {"anthropic": "saved-anthropic"}
+
+
+def test_saved_key_used_before_environment(monkeypatch):
+    cloud.save_api_key("openai", "saved-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "environment-secret")
+
+    def fake(request, timeout):
+        assert request.get_header("Authorization") == "Bearer saved-secret"
+        return BytesIO(json.dumps({"output": [{"content": [
+            {"type": "output_text", "text": json.dumps(proposal())}]}]}).encode())
+
+    monkeypatch.setattr(cloud, "urlopen", fake)
+    assert cloud.request_advice("openai", "vision", [np.zeros((2, 2, 3))]) == proposal()
+
+
 @pytest.mark.parametrize("provider", ["openai", "anthropic"])
 def test_cloud_payload_is_opt_in_bounded_and_provider_specific(monkeypatch, provider):
     monkeypatch.setenv(cloud.PROVIDERS[provider][1], "test-secret")

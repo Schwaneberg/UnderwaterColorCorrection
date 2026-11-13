@@ -53,6 +53,76 @@ def automatic_window(tmp_path, monkeypatch):
     app.processEvents()
 
 
+def test_cloud_advice_worker_survives_deleted_dialog(automatic_window, monkeypatch):
+    import threading
+    from uwcc import cloud, gui
+    from uwcc.project import Project
+
+    window, _, errors = automatic_window
+    window.project = Project("underwater.mp4")
+    tasks, dialogs, calls = [], [], []
+
+    def accept(dialog):
+        dialogs.append(dialog)
+        provider = dialog.findChild(gui.W.QComboBox)
+        provider.setCurrentIndex(provider.findData("anthropic"))
+        _, model, preference = dialog.findChildren(gui.W.QLineEdit)
+        model.setText("  test-vision-model  ")
+        preference.setText("Natural blue water")
+        return gui.W.QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(gui.W.QDialog, "exec", accept)
+    monkeypatch.setattr(window, "task", lambda operation, success: tasks.append(operation))
+    monkeypatch.setattr(cloud, "advise_project", lambda *args: calls.append(args))
+    window.cloud_advice()
+    # Force native widget destruction before the delayed background operation.
+    if gui.C.__name__.startswith("PySide6"):
+        from shiboken6 import delete
+    else:
+        from PyQt6.sip import delete
+    delete(dialogs[0])
+    cancel = threading.Event()
+    progress = lambda *_: None
+    tasks[0](cancel, progress)
+    assert calls[0][0] is not window.project
+    assert calls[0][1:] == ("anthropic", "test-vision-model", "Natural blue water", cancel, progress)
+    assert not errors
+
+
+def test_cloud_key_is_masked_and_saved_per_provider(automatic_window, monkeypatch):
+    from uwcc import cloud, gui
+    from uwcc.project import Project
+
+    window, _, _ = automatic_window
+    window.project = Project("underwater.mp4")
+    cloud.save_api_key("openai", "existing-secret")
+
+    def inspect(dialog):
+        key = dialog.findChild(gui.W.QLineEdit, "cloud_api_key")
+        show = next(c for c in dialog.findChildren(gui.W.QCheckBox) if c.text() == "Show API key")
+        save = next(b for b in dialog.findChildren(gui.W.QPushButton) if b.text() == "Save API key")
+        assert key.text() == "existing-secret"
+        assert key.echoMode() == gui.W.QLineEdit.EchoMode.Password
+        assert "existing-secret" not in key.displayText()
+        show.setChecked(True)
+        assert key.displayText() == "existing-secret"
+        provider = dialog.findChild(gui.W.QComboBox)
+        provider.setCurrentIndex(provider.findData("anthropic"))
+        assert not show.isChecked()
+        assert key.echoMode() == gui.W.QLineEdit.EchoMode.Password
+        assert key.text() == ""
+        key.setText("new-secret")
+        save.click()
+        assert cloud.saved_api_keys() == {"openai": "existing-secret", "anthropic": "new-secret"}
+        key.clear()
+        save.click()
+        assert cloud.saved_api_keys() == {"openai": "existing-secret"}
+        return gui.W.QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(gui.W.QDialog, "exec", inspect)
+    window.cloud_advice()
+
+
 def test_automatic_analysis_waits_for_profile_and_refreshes_inputs(clip, automatic_window, monkeypatch):
     import uwcc.gui as gui
     from uwcc.media import probe

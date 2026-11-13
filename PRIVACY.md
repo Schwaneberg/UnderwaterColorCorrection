@@ -29,7 +29,8 @@ If you choose to download optional neural enhancement or denoise models (via **A
 ### B. Optional Cloud Grading Advice
 If you explicitly configure and invoke the optional cloud advice feature (`uwcc advise` or through the desktop UI):
 * Three downscaled proxy frames and current grading parameters are sent directly to the third-party vision API provider you configure (such as OpenAI or Anthropic).
-* Requests are authenticated using your personal API key provided via your local environment variables.
+* Requests are authenticated using your personal API key saved through the cloud advice dialog or provided via local environment variables. Saved keys take precedence over environment variables.
+* Keys saved through the dialog are stored in plaintext in `cloud.json` in the local user application directory, separately from projects and presets. The input is masked by default; **Show API key** reveals it. Clear the field and select **Save API key** to remove a saved key.
 * No proxy frames, project data, or API keys are ever routed through or stored on any server operated by the UWCC developers.
 * Interactions with third-party API providers are governed by their respective privacy policies and terms of service.
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.0 — 2026-11-13
+
+### Added
+
+- Save provider-specific cloud API keys in local JSON configuration. Keys are
+  masked by default, with a Show API key toggle and controls to save or remove
+  them. Environment variables remain a fallback.
+- Document local plaintext key storage in the privacy policy.
+
+### Fixed
+
+- Capture cloud advice dialog settings before starting the background request,
+  preventing access to deleted Qt widgets on Windows.
+
+### Validation
+
+- GUI and cloud suites: 32 tests passed, including key persistence, masking,
+  provider switching, authentication, and dialog lifetime regressions.
+
 ## 0.5.4 — 2026-11-11
 
 ### Fixed

@@ -1,3 +1,11 @@
+uwcc (0.6.0-1~ppa1) resolute; urgency=medium
+
+  * Add persistent provider-specific cloud API keys with masked input and reveal.
+  * Fix cloud advice accessing dialog widgets from a background request.
+  * Document local plaintext key storage and verify GUI/cloud regressions.
+
+ -- Oliver Schwaneberg <oliver.schwaneberg@gmail.com>  Fri, 13 Nov 2026 12:00:00 +0100
+
 uwcc (0.5.4-1~ppa1) resolute; urgency=medium
 
   * Resolve Chocolatey and Scoop FFmpeg launchers during runtime discovery.
