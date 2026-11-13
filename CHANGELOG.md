@@ -4,6 +4,8 @@
 
 ### Added
 
+- Load account models asynchronously into an editable cloud model dropdown when
+  an API key is available, with automatic refresh on key/provider changes.
 - Save provider-specific cloud API keys in local JSON configuration. Keys are
   masked by default, with a Show API key toggle and controls to save or remove
   them. Environment variables remain a fallback.
@@ -16,8 +18,9 @@
 
 ### Validation
 
-- GUI and cloud suites: 32 tests passed, including key persistence, masking,
-  provider switching, authentication, and dialog lifetime regressions.
+- GUI, cloud, and model discovery suites: 37 tests passed, including key
+  persistence, masking, provider switching, authentication, pagination,
+  cancellation, and dialog lifetime regressions.
 
 ## 0.5.4 — 2026-11-11
 

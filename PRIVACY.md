@@ -27,6 +27,8 @@ UWCC is designed to operate completely offline. The application performs network
 If you choose to download optional neural enhancement or denoise models (via **AI models…** in the desktop interface or `uwcc model-tools`), the application establishes direct HTTPS connections to upstream public repositories (such as GitHub and Hugging Face) to download model source code and verified weights. No personal data, device identifiers, or user tracking tokens are transmitted during these requests.
 
 ### B. Optional Cloud Grading Advice
+Opening the cloud advice dialog with an available API key, or entering a key there, requests the selected provider's available model list. These authenticated requests send no video frames. Model lists can also be refreshed manually.
+
 If you explicitly configure and invoke the optional cloud advice feature (`uwcc advise` or through the desktop UI):
 * Three downscaled proxy frames and current grading parameters are sent directly to the third-party vision API provider you configure (such as OpenAI or Anthropic).
 * Requests are authenticated using your personal API key saved through the cloud advice dialog or provided via local environment variables. Saved keys take precedence over environment variables.

@@ -1,4 +1,5 @@
 What's new in v0.6.0:
 - Save OpenAI and Anthropic API keys locally for cloud grading advice.
+- Automatically load available API models into an editable dropdown when an API key is available.
 - API keys are hidden by default. Use "Show API key" to reveal them, or clear and save to remove a stored key.
 - Fixed a Windows error when requesting cloud grading advice after closing the settings dialog.

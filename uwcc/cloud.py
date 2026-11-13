@@ -64,11 +64,11 @@ def validate_advice(data):
     return {"values": values, "denoise": float(noise), "stabilize": data["stabilize"], "summary": data["summary"]}
 
 
-def request_advice(provider, model, images, preference="Natural, balanced, vivid underwater footage", cancel=None):
+def request_advice(provider, model, images, preference="Natural, balanced, vivid underwater footage", cancel=None, api_key=None):
     if provider not in PROVIDERS or not isinstance(model, str) or not model.strip():
         raise UWCCError("Choose a provider and enter a vision-capable API model ID.")
     endpoint, variable = PROVIDERS[provider]
-    key = saved_api_keys().get(provider) or os.environ.get(variable)
+    key = api_key or saved_api_keys().get(provider) or os.environ.get(variable)
     if not key:
         raise UWCCError(f"Save an API key in Cloud grading advice or set {variable} in the environment.")
     if cancel and cancel.is_set():
@@ -126,7 +126,8 @@ def request_advice(provider, model, images, preference="Natural, balanced, vivid
     return validate_advice(data)
 
 
-def advise_project(project, provider, model, preference="Natural, balanced, vivid underwater footage", cancel=None, progress=lambda *_: None):
+def advise_project(project, provider, model, preference="Natural, balanced, vivid underwater footage", cancel=None, progress=lambda *_: None,
+                   api_key=None):
     from .media import probe, read_frame, prepare_frame
     from .color import correct
     info = probe(project.source, cancel)
@@ -142,7 +143,7 @@ def advise_project(project, provider, model, preference="Natural, balanced, vivi
         raw = prepare_frame(read_frame(info, time, 640, cancel), info, grade.input_profile)
         frames.append(correct(raw, grade, time, project.analysis, preview=True))
     progress(.5, "Sending three proxy frames for cloud grading advice…")
-    result = request_advice(provider, model, frames, preference, cancel)
+    result = request_advice(provider, model, frames, preference, cancel, api_key=api_key)
     progress(1, "Cloud proposal ready for review")
     return result
 

@@ -1313,6 +1313,7 @@ class MainWindow(W.QMainWindow):
         if not self.project:
             return
         from .cloud import advise_project, apply_advice, save_api_key, saved_api_keys
+        from .cloud_models import ModelPicker
         dialog = W.QDialog(self)
         dialog.setWindowTitle("Cloud grading advice")
         layout = W.QVBoxLayout(dialog)
@@ -1337,11 +1338,13 @@ class MainWindow(W.QMainWindow):
         key_status = W.QLabel("Saved keys are stored locally in plaintext. Clear and save to remove a key.")
         key_status.setWordWrap(True)
         layout.addWidget(key_status)
+        model_picker = ModelPicker(dialog)
 
         def load_key():
             show_key.setChecked(False)
             api_key.setText(saved_api_keys().get(provider.currentData(), ""))
             key_status.setText("Saved keys are stored locally in plaintext. Clear and save to remove a key.")
+            model_picker.configure(provider.currentData(), api_key.text())
 
         def persist_key():
             try:
@@ -1352,28 +1355,31 @@ class MainWindow(W.QMainWindow):
             key_status.setText("API key saved." if api_key.text().strip() else "Saved API key removed.")
 
         provider.currentIndexChanged.connect(load_key)
+        api_key.textChanged.connect(lambda _: model_picker.configure(provider.currentData(), api_key.text()))
         save_key.clicked.connect(persist_key)
         load_key()
         layout.addWidget(W.QLabel("Vision-capable API model ID"))
-        model = W.QLineEdit()
-        model.setPlaceholderText("Enter a model available to your API account")
-        layout.addWidget(model)
+        model = model_picker.combo
+        layout.addWidget(model_picker)
         layout.addWidget(W.QLabel("Desired look"))
         preference = W.QLineEdit("Natural, balanced, vivid underwater footage")
         layout.addWidget(preference)
         buttons = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Cancel)
         send = buttons.addButton("Send frames and get advice", W.QDialogButtonBox.ButtonRole.AcceptRole)
         send.setEnabled(False)
-        model.textChanged.connect(lambda value: send.setEnabled(bool(value.strip())))
+        model.currentTextChanged.connect(lambda value: send.setEnabled(bool(value.strip())))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
-        if dialog.exec() != W.QDialog.DialogCode.Accepted:
+        result = dialog.exec()
+        model_picker.stop()
+        if result != W.QDialog.DialogCode.Accepted:
             return
         # Read widgets on the GUI thread while the dialog still owns them.
         # The background task can outlive the dialog and must use plain values.
         provider_id = provider.currentData()
-        model_id = model.text().strip()
+        model_id = model.currentText().strip()
+        request_key = model_picker.key
         desired_look = preference.text()
         self.stop_playback()
         snapshot, generation = clone(self.project), self.generation
@@ -1391,7 +1397,7 @@ class MainWindow(W.QMainWindow):
                 self.sync_controls()
                 self.changed()
         self.task(lambda cancel, progress: advise_project(snapshot, provider_id, model_id,
-                                                         desired_look, cancel, progress), complete)
+                                                         desired_look, cancel, progress, api_key=request_key), complete)
 
     def export_video(self):
         if not self.project:

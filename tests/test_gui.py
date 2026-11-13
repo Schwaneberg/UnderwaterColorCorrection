@@ -66,14 +66,15 @@ def test_cloud_advice_worker_survives_deleted_dialog(automatic_window, monkeypat
         dialogs.append(dialog)
         provider = dialog.findChild(gui.W.QComboBox)
         provider.setCurrentIndex(provider.findData("anthropic"))
-        _, model, preference = dialog.findChildren(gui.W.QLineEdit)
-        model.setText("  test-vision-model  ")
+        model = dialog.findChild(gui.W.QComboBox, "cloud_model")
+        preference = dialog.findChildren(gui.W.QLineEdit)[-1]
+        model.setEditText("  test-vision-model  ")
         preference.setText("Natural blue water")
         return gui.W.QDialog.DialogCode.Accepted
 
     monkeypatch.setattr(gui.W.QDialog, "exec", accept)
     monkeypatch.setattr(window, "task", lambda operation, success: tasks.append(operation))
-    monkeypatch.setattr(cloud, "advise_project", lambda *args: calls.append(args))
+    monkeypatch.setattr(cloud, "advise_project", lambda *args, **kwargs: calls.append(args))
     window.cloud_advice()
     # Force native widget destruction before the delayed background operation.
     if gui.C.__name__.startswith("PySide6"):

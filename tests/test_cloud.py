@@ -23,17 +23,18 @@ def test_saved_keys_roundtrip_and_remove_per_provider():
     assert cloud.saved_api_keys() == {"anthropic": "saved-anthropic"}
 
 
-def test_saved_key_used_before_environment(monkeypatch):
+@pytest.mark.parametrize("entered_key", [None, "unsaved-secret"])
+def test_saved_key_used_before_environment(monkeypatch, entered_key):
     cloud.save_api_key("openai", "saved-secret")
     monkeypatch.setenv("OPENAI_API_KEY", "environment-secret")
 
     def fake(request, timeout):
-        assert request.get_header("Authorization") == "Bearer saved-secret"
+        assert request.get_header("Authorization") == "Bearer " + (entered_key or "saved-secret")
         return BytesIO(json.dumps({"output": [{"content": [
             {"type": "output_text", "text": json.dumps(proposal())}]}]}).encode())
 
     monkeypatch.setattr(cloud, "urlopen", fake)
-    assert cloud.request_advice("openai", "vision", [np.zeros((2, 2, 3))]) == proposal()
+    assert cloud.request_advice("openai", "vision", [np.zeros((2, 2, 3))], api_key=entered_key) == proposal()
 
 
 @pytest.mark.parametrize("provider", ["openai", "anthropic"])
